@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.5-flash"
     cors_origins: str = "http://localhost:5173"
 
     # --- Token inspector settings (Phase 1) ---
@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     # free tier (actual cost $0), but showing what it *would* cost teaches the
     # economics of token usage.
     gemini_input_price_per_1m: float = 0.30
+
+    # --- Vector database settings (Phase 3) ---
+    # Neon Postgres connection string, e.g.
+    #   postgresql://user:pass@ep-xxx.region.aws.neon.tech/dbname?sslmode=require
+    database_url: str = ""
 
     # --- Embedding settings (Phase 2) ---
     gemini_embed_model: str = "gemini-embedding-001"

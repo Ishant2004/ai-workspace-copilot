@@ -53,6 +53,99 @@ export async function embed(text: string): Promise<EmbedResult> {
   return response.json();
 }
 
+// --- Phase 3: vector database ---
+
+export interface AddDocResult {
+  id: number;
+  title: string;
+  total_documents: number;
+}
+
+export interface SearchHit {
+  id: number;
+  title: string;
+  text: string;
+  similarity: number;
+}
+
+// Store a document: the backend embeds it and saves it in pgvector.
+export async function addDocument(
+  text: string,
+  title: string
+): Promise<AddDocResult> {
+  const response = await fetch("/api/documents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, title }),
+  });
+  if (!response.ok) throw new Error(await errorText(response, "Add document"));
+  return response.json();
+}
+
+// Semantic search: the backend embeds the query and returns nearest documents.
+export async function searchDocuments(
+  query: string,
+  k = 5
+): Promise<SearchHit[]> {
+  const response = await fetch("/api/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, k }),
+  });
+  if (!response.ok) throw new Error(await errorText(response, "Search"));
+  const data = await response.json();
+  return data.results;
+}
+
+export async function documentCount(): Promise<number> {
+  const response = await fetch("/api/documents/count");
+  if (!response.ok) throw new Error(await errorText(response, "Count"));
+  return (await response.json()).total_documents;
+}
+
+export interface DocumentItem {
+  id: number;
+  title: string;
+  text: string;
+}
+
+// List every stored document (no raw vectors) for the management view.
+export async function listDocuments(): Promise<DocumentItem[]> {
+  const response = await fetch("/api/documents");
+  if (!response.ok) throw new Error(await errorText(response, "List"));
+  return response.json();
+}
+
+// Replace a document's title/text. The backend re-embeds the new text.
+export async function updateDocument(
+  id: number,
+  text: string,
+  title: string
+): Promise<void> {
+  const response = await fetch(`/api/documents/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, title }),
+  });
+  if (!response.ok) throw new Error(await errorText(response, "Update"));
+}
+
+export async function deleteDocument(id: number): Promise<number> {
+  const response = await fetch(`/api/documents/${id}`, { method: "DELETE" });
+  if (!response.ok) throw new Error(await errorText(response, "Delete"));
+  return (await response.json()).total_documents;
+}
+
+// Pull a useful message out of a failed response (FastAPI puts it in `detail`).
+async function errorText(response: Response, label: string): Promise<string> {
+  try {
+    const body = await response.json();
+    return `${label} failed: ${body.detail ?? response.status}`;
+  } catch {
+    return `${label} failed: ${response.status}`;
+  }
+}
+
 interface StreamHandlers {
   onChunk: (text: string) => void;
   onDone: () => void;

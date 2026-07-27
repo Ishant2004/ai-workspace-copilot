@@ -13,8 +13,9 @@ single application until it resembles a production AI copilot.
 | 0 | ChatGPT-style streaming chat (Gemini) | ✅ Done |
 | 1 | Tokenization inspector | ✅ Done |
 | 2 | Embedding service | ✅ Done |
-| 3 | Vector DB (pgvector) | ⏳ Planned |
-| 4+ | RAG, tools, agents, MCP… | ⏳ Planned |
+| 3 | Vector DB (pgvector) | ✅ Done |
+| 4 | RAG (grounded answers) | ⏳ Planned |
+| 5+ | PDF ingest, tools, agents, MCP… | ⏳ Planned |
 
 See [`plan.md`](plan.md) for the full roadmap.
 
@@ -22,11 +23,14 @@ See [`plan.md`](plan.md) for the full roadmap.
 
 - **Frontend:** React + TypeScript + Tailwind (Vite)
 - **Backend:** FastAPI (Python)
-- **LLM:** Google Gemini (AI Studio free tier)
+- **LLM & embeddings:** Google Gemini (AI Studio free tier)
+- **Vector DB:** Neon Postgres + `pgvector` (free tier)
 
 ## Quick start
 
-You need a free Gemini API key: https://aistudio.google.com/apikey
+You need two free accounts:
+- Gemini API key: https://aistudio.google.com/apikey
+- Neon Postgres connection string (for Phase 3+): https://neon.tech
 
 ### 1. Backend
 
@@ -34,9 +38,13 @@ You need a free Gemini API key: https://aistudio.google.com/apikey
 cd backend
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-cp .env.example .env        # paste your GEMINI_API_KEY into .env
+cp .env.example .env        # paste your GEMINI_API_KEY and DATABASE_URL into .env
 .venv/bin/uvicorn main:app --reload
 ```
+
+The `documents` table and `pgvector` extension are created automatically on
+first startup. Without `DATABASE_URL`, the app still runs — only Vector Search
+is disabled.
 
 ### 2. Frontend
 

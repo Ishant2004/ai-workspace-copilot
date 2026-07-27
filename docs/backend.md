@@ -12,7 +12,9 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `api/chat.py` | The `POST /chat` endpoint. Streams the reply as SSE. |
 | `api/tokens.py` | The `POST /tokenize` endpoint (Phase 1 token inspector). |
 | `api/embed.py` | The `POST /embed` endpoint (Phase 2 embedding service). |
+| `api/documents.py` | `POST /documents`, `POST /search`, `GET /documents/count` (Phase 3). |
 | `services/gemini.py` | Wrapper around the Gemini SDK: chat, tokens, embeddings. |
+| `services/db.py` | Vector DB access: init, insert, cosine search (Phase 3). |
 
 ## Endpoints
 
@@ -73,6 +75,39 @@ Response:
 - Model and dimension are configurable in `config.py` /`.env`
   (`gemini_embed_model`, `gemini_embed_dim`). **Do not change the dimension
   after storing documents** — old and new vectors would be incomparable.
+
+### `POST /documents`
+Store a document. Body: `{ "text": "...", "title": "optional" }`.
+Response: `{ "id": 1, "title": "...", "total_documents": 1 }`.
+The backend embeds the text and inserts it into the `documents` table.
+
+### `GET /documents`
+List all stored documents (id, title, text) newest-first. The raw embedding is
+omitted — it's large and the UI never needs it just to list records.
+
+### `PUT /documents/{id}`
+Update a document. Body: same as POST. The backend **re-embeds** the new text
+so the stored vector stays consistent with the text. Returns 404 if the id
+doesn't exist.
+
+### `DELETE /documents/{id}`
+Delete a document. Response: `{ "id": 1, "deleted": true, "total_documents": 0 }`.
+Returns 404 if the id doesn't exist.
+
+### `POST /search`
+Semantic search. Body: `{ "query": "...", "k": 5 }`.
+Response:
+```json
+{ "query": "...", "results": [ { "id": 1, "title": "...", "text": "...", "similarity": 0.69 } ] }
+```
+`similarity` is `1 - cosine_distance` (0..1, higher = more relevant).
+
+### `GET /documents/count`
+Returns `{ "total_documents": N }`. Used by the UI badge.
+
+> Requires `DATABASE_URL` (a Neon Postgres URL). The table + `vector` extension
+> are created automatically on startup. Embedding dimension must match
+> `GEMINI_EMBED_DIM` and must not change once documents are stored.
 
 ## Key design decisions
 

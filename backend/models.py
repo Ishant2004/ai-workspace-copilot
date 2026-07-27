@@ -68,3 +68,49 @@ class EmbedResponse(BaseModel):
     model: str
     dimension: int
     embedding: list[float]
+
+
+class DocumentRequest(BaseModel):
+    """Body of POST /documents — a document to embed and store."""
+
+    text: str
+    title: str = ""
+
+
+class DocumentResponse(BaseModel):
+    id: int
+    title: str
+    total_documents: int
+
+
+class DocumentItem(BaseModel):
+    """A stored document as shown in the management list (no raw embedding)."""
+
+    id: int
+    title: str
+    text: str
+
+
+class DeleteResponse(BaseModel):
+    id: int
+    deleted: bool
+    total_documents: int
+
+
+class SearchRequest(BaseModel):
+    """Body of POST /search — a natural-language query."""
+
+    query: str
+    k: int = 5  # how many results to return
+
+
+class SearchHit(BaseModel):
+    id: int
+    title: str
+    text: str
+    similarity: float  # 0..1, higher = more relevant
+
+
+class SearchResponse(BaseModel):
+    query: str
+    results: list[SearchHit]

@@ -31,6 +31,7 @@ Browser (React)  ──HTTP/SSE──►  FastAPI backend  ──►  Gemini LLM
 | 0 | ChatGPT-style streaming chat | ✅ Done |
 | 1 | Token inspector | ✅ Done |
 | 2 | Embedding service | ✅ Done |
+| 3 | Vector database (pgvector) | ✅ Done |
 
 ## Current data flow (Phase 0)
 
@@ -77,6 +78,41 @@ Key choice: **dimension is fixed by config** (`GEMINI_EMBED_DIM`, default 768).
 Every document must be embedded with the same model and dimension, or the
 vectors are not comparable. This value becomes the pgvector column size in
 Phase 3.
+
+## Phase 3: the vector database
+
+We now have somewhere to *keep* embeddings and search them. It's Postgres (free
+Neon instance) with the `pgvector` extension. One table:
+
+```
+documents(id, title, text, embedding vector(768), created_at)
+```
+
+Full CRUD plus search:
+- **Store** (`POST /documents`): embed the text, insert the row.
+- **List** (`GET /documents`): all documents (without the raw vectors).
+- **Update** (`PUT /documents/{id}`): re-embed the new text and replace the row
+  — the stored vector always matches the stored text.
+- **Delete** (`DELETE /documents/{id}`): remove a document.
+- **Search** (`POST /search`): embed the query, then ask Postgres for the rows
+  whose `embedding` is nearest to the query vector using the cosine-distance
+  operator `<=>`. We return `1 - distance` as a 0..1 similarity score.
+
+Verified live: the query "Can I get my money back if I don't like the product?"
+ranked a "Refund policy" document (69%) above an unrelated "Shipping" document
+(53%) — despite sharing **no keywords** with it. That is the payoff of vector
+search: it matches meaning, not words.
+
+Two implementation gotchas worth remembering (both handled in `services/db.py`):
+1. `register_vector` needs the extension to already exist, so `init_db` creates
+   the extension on a connection with the adapter *off*, then everything else
+   uses it *on*.
+2. A Python list is sent to Postgres as a `float8[]`, which has no `<=>`
+   operator — so the query casts the parameter with `::vector`.
+
+The database is initialised automatically on backend startup (see the
+`lifespan` handler in `main.py`). If `DATABASE_URL` is unset, the app still runs
+— only `/documents` and `/search` are unavailable.
 
 ## Why streaming (SSE)?
 
