@@ -12,7 +12,9 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `api/chat.py` | The `POST /chat` endpoint. Streams the reply as SSE. |
 | `api/tokens.py` | The `POST /tokenize` endpoint (Phase 1 token inspector). |
 | `api/embed.py` | The `POST /embed` endpoint (Phase 2 embedding service). |
-| `api/documents.py` | `POST /documents`, `POST /search`, `GET /documents/count` (Phase 3). |
+| `api/documents.py` | Document CRUD + `POST /search` (Phase 3). |
+| `api/rag.py` | `POST /rag/chat` — grounded, cited streaming chat (Phase 4). |
+| `prompts.py` | Prompt templates (the RAG grounding system prompt). |
 | `services/gemini.py` | Wrapper around the Gemini SDK: chat, tokens, embeddings. |
 | `services/db.py` | Vector DB access: init, insert, cosine search (Phase 3). |
 
@@ -108,6 +110,18 @@ Returns `{ "total_documents": N }`. Used by the UI badge.
 > Requires `DATABASE_URL` (a Neon Postgres URL). The table + `vector` extension
 > are created automatically on startup. Embedding dimension must match
 > `GEMINI_EMBED_DIM` and must not change once documents are stored.
+
+### `POST /rag/chat`
+Grounded chat. Body: `{ "messages": [...], "k": 4 }`.
+Response: an SSE stream. The first event lists the retrieved sources, then the
+answer streams as chunks:
+- `{"type": "sources", "sources": [{"id":1,"title":"...","similarity":0.74}]}`
+- `{"type": "chunk", "content": "..."}` … `{"type": "done"}`
+- `{"type": "error", "content": "..."}` on failure.
+
+Flow: embed the last user message → `db.search` top-k → `prompts` build a system
+instruction containing that context → `stream_chat(messages, system_prompt)`.
+The `system_instruction` support was added to `services/gemini.py` for this.
 
 ## Key design decisions
 

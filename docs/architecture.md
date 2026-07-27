@@ -32,6 +32,7 @@ Browser (React)  ──HTTP/SSE──►  FastAPI backend  ──►  Gemini LLM
 | 1 | Token inspector | ✅ Done |
 | 2 | Embedding service | ✅ Done |
 | 3 | Vector database (pgvector) | ✅ Done |
+| 4 | RAG (grounded answers) | ✅ Done |
 
 ## Current data flow (Phase 0)
 
@@ -113,6 +114,40 @@ Two implementation gotchas worth remembering (both handled in `services/db.py`):
 The database is initialised automatically on backend startup (see the
 `lifespan` handler in `main.py`). If `DATABASE_URL` is unset, the app still runs
 — only `/documents` and `/search` are unavailable.
+
+## Phase 4: RAG (Retrieval-Augmented Generation)
+
+This is where the pieces click together. Plain chat (Phase 0) answers from the
+model's own memory — it can't know anything about *your* documents, and it may
+confidently make things up. RAG fixes both by grounding the answer in retrieved
+documents:
+
+```
+question ─► embed (Phase 2) ─► vector search top-k (Phase 3)
+        ─► build grounded prompt (prompts.py) ─► Gemini (Phase 0 streaming)
+        ─► stream answer with [#id] citations
+```
+
+The grounding lives entirely in the **prompt**: we put the retrieved documents
+into a system instruction that says "answer using ONLY this context, cite by
+[#id], and if it's not here say you don't know." The model itself is unchanged —
+RAG is a *context* technique, not a *model* technique. This is the single most
+important idea in the whole roadmap: making the model smarter is mostly about
+choosing what to put in its context.
+
+The `/rag/chat` endpoint streams the same SSE as `/chat`, with one extra event
+first: a `sources` event listing the retrieved documents, so the UI can show
+exactly what the answer was based on. In the Chat tab a checkbox toggles RAG on;
+answers then show a "Sources" strip beneath them.
+
+Verified: with three HR-policy documents stored, "How many vacation days do I
+get, and can I work from home?" produced a two-part answer citing both the PTO
+and Remote-Work docs ([#1], [#2]); an off-topic question ("stock price today?")
+correctly returned "I don't know based on the available documents."
+
+> The public Gemini free tier intermittently returns `503 UNAVAILABLE` ("high
+> demand"). Our streaming surfaces that as an error event rather than hanging.
+> It is transient — retrying succeeds.
 
 ## Why streaming (SSE)?
 

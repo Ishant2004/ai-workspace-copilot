@@ -35,11 +35,25 @@ def _to_gemini_contents(messages: list[Message]) -> list[types.Content]:
     return contents
 
 
-def stream_chat(messages: list[Message]) -> Iterator[str]:
-    """Yield the assistant's reply in chunks as Gemini generates it."""
+def stream_chat(
+    messages: list[Message], system_instruction: str | None = None
+) -> Iterator[str]:
+    """Yield the assistant's reply in chunks as Gemini generates it.
+
+    `system_instruction` is an optional up-front instruction that steers the
+    model without being part of the visible conversation. RAG (Phase 4) uses it
+    to inject the retrieved document context and the "answer only from this"
+    rule.
+    """
+    config = None
+    if system_instruction:
+        config = types.GenerateContentConfig(
+            system_instruction=system_instruction
+        )
     response = _client.models.generate_content_stream(
         model=settings.gemini_model,
         contents=_to_gemini_contents(messages),
+        config=config,
     )
     for chunk in response:
         if chunk.text:

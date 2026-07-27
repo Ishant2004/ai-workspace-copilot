@@ -14,7 +14,7 @@ single application until it resembles a production AI copilot.
 | 1 | Tokenization inspector | ✅ Done |
 | 2 | Embedding service | ✅ Done |
 | 3 | Vector DB (pgvector) | ✅ Done |
-| 4 | RAG (grounded answers) | ⏳ Planned |
+| 4 | RAG (grounded answers) | ✅ Done |
 | 5+ | PDF ingest, tools, agents, MCP… | ⏳ Planned |
 
 See [`plan.md`](plan.md) for the full roadmap.

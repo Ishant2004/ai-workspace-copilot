@@ -150,16 +150,21 @@ interface StreamHandlers {
   onChunk: (text: string) => void;
   onDone: () => void;
   onError: (message: string) => void;
+  // Only RAG emits this: the documents the answer is grounded in.
+  onSources?: (sources: SearchHit[]) => void;
 }
 
-export async function streamChat(
-  messages: Message[],
+// Shared SSE reader used by both plain chat and RAG chat. It POSTs the body,
+// then reads the response stream and dispatches each `data: {...}` event.
+async function streamSse(
+  url: string,
+  body: unknown,
   handlers: StreamHandlers
 ): Promise<void> {
-  const response = await fetch("/api/chat", {
+  const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok || !response.body) {
@@ -171,8 +176,8 @@ export async function streamChat(
   const decoder = new TextDecoder();
   let buffer = "";
 
-  // Read the stream chunk by chunk. Network chunks don't line up with SSE
-  // events, so we buffer and split on the blank line that separates events.
+  // Network chunks don't line up with SSE events, so we buffer and split on the
+  // blank line that separates events.
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -187,8 +192,27 @@ export async function streamChat(
 
       const payload = JSON.parse(line.slice(5).trim());
       if (payload.type === "chunk") handlers.onChunk(payload.content);
+      else if (payload.type === "sources")
+        handlers.onSources?.(payload.sources);
       else if (payload.type === "done") handlers.onDone();
       else if (payload.type === "error") handlers.onError(payload.content);
     }
   }
+}
+
+// Phase 0: plain chat, answered from the model's own knowledge.
+export function streamChat(
+  messages: Message[],
+  handlers: StreamHandlers
+): Promise<void> {
+  return streamSse("/api/chat", { messages }, handlers);
+}
+
+// Phase 4: RAG chat — grounded in the user's stored documents. Emits a
+// `sources` event (via handlers.onSources) before the answer text.
+export function streamRag(
+  messages: Message[],
+  handlers: StreamHandlers
+): Promise<void> {
+  return streamSse("/api/rag/chat", { messages, k: 4 }, handlers);
 }

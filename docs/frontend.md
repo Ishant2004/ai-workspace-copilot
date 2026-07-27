@@ -8,14 +8,26 @@ React + TypeScript + Tailwind (built with Vite). A single-page chat UI.
 | ---- | -------------- |
 | `index.html` | HTML entry point; mounts the React app into `#root`. |
 | `src/main.tsx` | React bootstrap. |
-| `src/App.tsx` | App shell: header + tabs (Chat / Token Inspector / Embeddings). |
-| `src/components/Chat.tsx` | The chat UI: message list, input box, send logic. |
+| `src/App.tsx` | App shell: header + tabs. Keeps all tabs mounted (see below). |
+| `src/components/Chat.tsx` | Chat UI + RAG toggle and sources strip (Phases 0 & 4). |
 | `src/components/TokenInspector.tsx` | Phase 1: live token metrics for typed text. |
 | `src/components/EmbedInspector.tsx` | Phase 2: embeds text and visualises the vector. |
 | `src/components/VectorSearch.tsx` | Phase 3: add documents + semantic search UI. |
 | `src/services/api.ts` | Calls chat, tokenize, embed, documents, search. |
 | `src/index.css` | Imports Tailwind. |
 | `vite.config.ts` | Dev server + proxy (`/api` → backend on :8000). |
+
+## Tab state persistence
+
+All four tab components stay **mounted** for the whole session. `App.tsx`
+renders each inside a `TabPanel` that hides the inactive ones with `hidden`
+(`display:none`) instead of removing them from the tree.
+
+Why: React keeps a component's state only while it's mounted. The earlier
+version rendered `{tab === "chat" && <Chat />}`, which unmounted the previous
+tab on every switch — so your chat history, typed text, and search results were
+thrown away. Keeping the components mounted preserves all of that; switching
+tabs just toggles visibility.
 
 ## How streaming works on the client
 
@@ -68,6 +80,18 @@ just a long list of numbers.
 The list is the source of truth for the doc count badge; it refreshes on load
 and after every add/edit/delete. If the DB isn't reachable it shows a friendly
 hint about `DATABASE_URL`.
+
+## RAG in the Chat tab (Phase 4)
+
+The Chat tab has a checkbox: **"Ground answers in my documents (RAG)"**. When
+off, sending calls `streamChat` (`/api/chat`). When on, it calls `streamRag`
+(`/api/rag/chat`), which additionally receives a `sources` event.
+
+Both share one SSE reader (`streamSse` in `api.ts`); the only difference is the
+URL and the optional `onSources` handler. Messages are stored as
+`DisplayMessage` (a `Message` plus an optional `sources` array); only
+`{role, content}` is sent to the backend. RAG answers render a small "Sources:"
+strip of `[#id] title` chips beneath the bubble.
 
 ## The `/api` proxy
 

@@ -24,6 +24,14 @@ class ChatRequest(BaseModel):
     messages: list[Message]
 
 
+class RagChatRequest(BaseModel):
+    """Body of POST /rag/chat. Like a chat request, but the last user message
+    is used to retrieve grounding documents before answering."""
+
+    messages: list[Message]
+    k: int = 4  # how many documents to retrieve as context
+
+
 class TokenizeRequest(BaseModel):
     """Body of POST /tokenize."""
 
