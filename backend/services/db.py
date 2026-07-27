@@ -77,6 +77,25 @@ def insert_document(title: str, text: str, embedding: list[float]) -> int:
         return row[0]
 
 
+def insert_documents(rows: list[tuple[str, str, list[float]]]) -> int:
+    """Insert many (title, text, embedding) rows in one connection.
+
+    Used by PDF ingestion, where one file becomes many chunk rows. Batching
+    the inserts over a single connection is much faster than reconnecting per
+    chunk. Returns how many rows were inserted.
+    """
+    if not rows:
+        return 0
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO documents (title, text, embedding) "
+                "VALUES (%s, %s, %s);",
+                rows,
+            )
+    return len(rows)
+
+
 def search(query_embedding: list[float], k: int) -> list[dict]:
     """Return the k documents most similar to the query embedding.
 

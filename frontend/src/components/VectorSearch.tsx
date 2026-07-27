@@ -1,20 +1,23 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   addDocument,
   updateDocument,
   deleteDocument,
   listDocuments,
   searchDocuments,
+  uploadPdf,
   type DocumentItem,
   type SearchHit,
 } from "../services/api";
 
 // Phase 3: Vector database demo (with full CRUD).
+// Phase 5: also ingest PDFs (extract -> chunk -> embed -> store).
 //
-// Three parts of one loop:
+// The loop:
 //   1. Add / edit documents -> backend embeds them and stores them in pgvector.
-//   2. Manage documents      -> list, edit (re-embeds), delete.
-//   3. Search                -> backend embeds the query and returns the nearest
+//   2. Upload a PDF          -> backend chunks + embeds it into many documents.
+//   3. Manage documents      -> list, edit (re-embeds), delete.
+//   4. Search                -> backend embeds the query and returns the nearest
 //                               documents by cosine similarity.
 // The similarity score (0..1) shows this is *meaning-based* matching, not
 // keyword matching — a query can rank a document highly with no shared words.
@@ -22,6 +25,11 @@ import {
 export default function VectorSearch() {
   const [docs, setDocs] = useState<DocumentItem[]>([]);
   const [dbError, setDbError] = useState<string | null>(null);
+
+  // PDF upload state.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState<string | null>(null);
 
   // Form state — shared by "add" and "edit". editingId === null means adding.
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -73,6 +81,23 @@ export default function VectorSearch() {
       setAddMsg(e instanceof Error ? e.message : "Failed to save document");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function onUpload(file: File) {
+    setUploading(true);
+    setUploadMsg(null);
+    try {
+      const res = await uploadPdf(file);
+      setUploadMsg(
+        `Ingested "${res.filename}" (${res.pages} page(s)) → ${res.chunks_stored} chunks stored.`
+      );
+      await refresh();
+    } catch (e) {
+      setUploadMsg(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = ""; // allow re-upload
     }
   }
 
@@ -168,6 +193,32 @@ export default function VectorSearch() {
           )}
           {addMsg && <span className="text-sm text-neutral-500">{addMsg}</span>}
         </div>
+      </section>
+
+      {/* Upload a PDF (Phase 5) */}
+      <section className="space-y-2 rounded-lg border border-neutral-200 bg-white p-4">
+        <h2 className="text-sm font-semibold">Upload a PDF</h2>
+        <p className="text-xs text-neutral-500">
+          The PDF is split into overlapping chunks, each embedded and stored as
+          a document — so its content becomes searchable and usable for RAG.
+        </p>
+        <div className="flex items-center gap-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/pdf"
+            disabled={uploading}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onUpload(f);
+            }}
+            className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-blue-700 disabled:opacity-40"
+          />
+          {uploading && (
+            <span className="text-sm text-neutral-500">Ingesting…</span>
+          )}
+        </div>
+        {uploadMsg && <p className="text-sm text-neutral-600">{uploadMsg}</p>}
       </section>
 
       {/* Stored documents (manage) */}

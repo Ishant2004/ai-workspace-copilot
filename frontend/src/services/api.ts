@@ -136,6 +136,23 @@ export async function deleteDocument(id: number): Promise<number> {
   return (await response.json()).total_documents;
 }
 
+export interface UploadResult {
+  filename: string;
+  pages: number;
+  chunks_stored: number;
+  total_documents: number;
+}
+
+// Upload a PDF. The backend extracts text, chunks it, embeds every chunk, and
+// stores them as searchable documents. Sent as multipart/form-data.
+export async function uploadPdf(file: File): Promise<UploadResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch("/api/upload", { method: "POST", body: form });
+  if (!response.ok) throw new Error(await errorText(response, "Upload"));
+  return response.json();
+}
+
 // Pull a useful message out of a failed response (FastAPI puts it in `detail`).
 async function errorText(response: Response, label: string): Promise<string> {
   try {

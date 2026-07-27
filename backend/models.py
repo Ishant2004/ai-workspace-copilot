@@ -105,6 +105,15 @@ class DeleteResponse(BaseModel):
     total_documents: int
 
 
+class UploadResponse(BaseModel):
+    """Result of ingesting a PDF (POST /upload)."""
+
+    filename: str
+    pages: int
+    chunks_stored: int
+    total_documents: int
+
+
 class SearchRequest(BaseModel):
     """Body of POST /search — a natural-language query."""
 

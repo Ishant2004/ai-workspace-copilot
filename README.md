@@ -15,7 +15,8 @@ single application until it resembles a production AI copilot.
 | 2 | Embedding service | ✅ Done |
 | 3 | Vector DB (pgvector) | ✅ Done |
 | 4 | RAG (grounded answers) | ✅ Done |
-| 5+ | PDF ingest, tools, agents, MCP… | ⏳ Planned |
+| 5 | PDF upload & ingestion | ✅ Done |
+| 6+ | Advanced chunking, tools, agents, MCP… | ⏳ Planned |
 
 See [`plan.md`](plan.md) for the full roadmap.
 

@@ -14,9 +14,12 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `api/embed.py` | The `POST /embed` endpoint (Phase 2 embedding service). |
 | `api/documents.py` | Document CRUD + `POST /search` (Phase 3). |
 | `api/rag.py` | `POST /rag/chat` — grounded, cited streaming chat (Phase 4). |
+| `api/upload.py` | `POST /upload` — PDF ingestion pipeline (Phase 5). |
 | `prompts.py` | Prompt templates (the RAG grounding system prompt). |
-| `services/gemini.py` | Wrapper around the Gemini SDK: chat, tokens, embeddings. |
-| `services/db.py` | Vector DB access: init, insert, cosine search (Phase 3). |
+| `services/gemini.py` | Gemini SDK: chat, tokens, single + batch embeddings. |
+| `services/db.py` | Vector DB access: init, insert, bulk insert, cosine search. |
+| `services/pdf.py` | Extract text from PDF bytes (pypdf). |
+| `services/chunking.py` | Split text into overlapping chunks. |
 
 ## Endpoints
 
@@ -122,6 +125,18 @@ answer streams as chunks:
 Flow: embed the last user message → `db.search` top-k → `prompts` build a system
 instruction containing that context → `stream_chat(messages, system_prompt)`.
 The `system_instruction` support was added to `services/gemini.py` for this.
+
+### `POST /upload`
+Ingest a PDF. Multipart form field `file` (a `.pdf`).
+Response:
+```json
+{ "filename": "handbook.pdf", "pages": 1, "chunks_stored": 2, "total_documents": 2 }
+```
+Pipeline: `services/pdf.extract_text` → `services/chunking.chunk_text`
+(`chunk_size`/`chunk_overlap` from config) → `services/gemini.embed_texts`
+(batched) → `db.insert_documents` (bulk). Each chunk becomes a normal document
+row, so it's immediately searchable and RAG-usable. Returns 400 for non-PDFs or
+PDFs with no extractable text (e.g. scanned images — no OCR here).
 
 ## Key design decisions
 

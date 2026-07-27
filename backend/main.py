@@ -14,6 +14,7 @@ from api.documents import router as documents_router
 from api.embed import router as embed_router
 from api.rag import router as rag_router
 from api.tokens import router as tokens_router
+from api.upload import router as upload_router
 from config import settings
 from services import db
 
@@ -52,6 +53,7 @@ app.include_router(tokens_router)
 app.include_router(embed_router)
 app.include_router(documents_router)
 app.include_router(rag_router)
+app.include_router(upload_router)
 
 
 @app.get("/health")

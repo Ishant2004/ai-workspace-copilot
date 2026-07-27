@@ -76,11 +76,36 @@ def embed_text(text: str) -> list[float]:
             output_dimensionality=settings.gemini_embed_dim
         ),
     )
-    vector = list(result.embeddings[0].values)
+    return _normalize(list(result.embeddings[0].values))
 
+
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    """Embed many texts at once. Used when ingesting a PDF's chunks.
+
+    Batching means one API round-trip instead of one per chunk, which is far
+    faster and easier on rate limits. We batch in groups to stay within the
+    model's per-request limit.
+    """
+    batch_size = 100
+    vectors: list[list[float]] = []
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i : i + batch_size]
+        result = _client.models.embed_content(
+            model=settings.gemini_embed_model,
+            contents=batch,
+            config=types.EmbedContentConfig(
+                output_dimensionality=settings.gemini_embed_dim
+            ),
+        )
+        vectors.extend(_normalize(list(e.values)) for e in result.embeddings)
+    return vectors
+
+
+def _normalize(vector: list[float]) -> list[float]:
+    """Scale a vector to unit length (see embed_text for why)."""
     magnitude = math.sqrt(sum(v * v for v in vector))
     if magnitude > 0:
-        vector = [v / magnitude for v in vector]
+        return [v / magnitude for v in vector]
     return vector
 
 

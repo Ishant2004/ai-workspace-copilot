@@ -12,7 +12,7 @@ React + TypeScript + Tailwind (built with Vite). A single-page chat UI.
 | `src/components/Chat.tsx` | Chat UI + RAG toggle and sources strip (Phases 0 & 4). |
 | `src/components/TokenInspector.tsx` | Phase 1: live token metrics for typed text. |
 | `src/components/EmbedInspector.tsx` | Phase 2: embeds text and visualises the vector. |
-| `src/components/VectorSearch.tsx` | Phase 3: add documents + semantic search UI. |
+| `src/components/VectorSearch.tsx` | Phases 3 & 5: add/upload docs + semantic search. |
 | `src/services/api.ts` | Calls chat, tokenize, embed, documents, search. |
 | `src/index.css` | Imports Tailwind. |
 | `vite.config.ts` | Dev server + proxy (`/api` → backend on :8000). |
@@ -80,6 +80,11 @@ just a long list of numbers.
 The list is the source of truth for the doc count badge; it refreshes on load
 and after every add/edit/delete. If the DB isn't reachable it shows a friendly
 hint about `DATABASE_URL`.
+
+**Upload a PDF (Phase 5):** a file input sends the chosen PDF to `POST
+/api/upload` as multipart form data (`uploadPdf` in `api.ts`). On success it
+shows how many chunks were stored and refreshes the list — the new chunks appear
+as `filename · chunk i/n` documents.
 
 ## RAG in the Chat tab (Phase 4)
 

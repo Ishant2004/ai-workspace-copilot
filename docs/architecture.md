@@ -33,6 +33,7 @@ Browser (React)  ──HTTP/SSE──►  FastAPI backend  ──►  Gemini LLM
 | 2 | Embedding service | ✅ Done |
 | 3 | Vector database (pgvector) | ✅ Done |
 | 4 | RAG (grounded answers) | ✅ Done |
+| 5 | PDF upload & ingestion | ✅ Done |
 
 ## Current data flow (Phase 0)
 
@@ -148,6 +149,38 @@ correctly returned "I don't know based on the available documents."
 > The public Gemini free tier intermittently returns `503 UNAVAILABLE` ("high
 > demand"). Our streaming surfaces that as an error event rather than hanging.
 > It is transient — retrying succeeds.
+
+## Phase 5: PDF upload & ingestion
+
+Until now documents were pasted in by hand. Phase 5 lets you drop in a whole PDF
+and have it become searchable. The ingestion pipeline (`api/upload.py`):
+
+```
+PDF bytes ─► extract text (pypdf) ─► split into overlapping chunks
+         ─► embed all chunks in one batched call ─► store each chunk as a document
+```
+
+Why **chunk** at all? An embedding is a single fixed-length vector, so it can
+only capture a limited span of text well. A whole PDF embedded as one vector
+would be a blurry average — useless for retrieval. Splitting into ~800-char
+chunks (with 100-char overlap so boundary sentences aren't lost) means search
+can pinpoint the exact passage that answers a question. Each chunk is stored as
+an ordinary document row (`filename · chunk i/n`), so it's instantly usable by
+Phase 3 search and Phase 4 RAG with no extra code.
+
+Why **batch** the embeddings? One API round-trip for all chunks instead of one
+per chunk — far faster and easier on rate limits (`embed_texts` in
+`services/gemini.py`).
+
+Verified: uploading a 1-page handbook PDF produced 2 chunks, and a query about
+"parental leave" retrieved the correct chunk.
+
+> Not done yet (optional): the plan also stores the *raw* PDF file in Cloudflare
+> R2. That's just blob storage of the original and needs another free signup, so
+> it's deferred — the searchable content already lives in Postgres.
+
+Chunking here is deliberately simple (fixed-size character windows). Phase 6
+makes it boundary-aware and adds metadata.
 
 ## Why streaming (SSE)?
 

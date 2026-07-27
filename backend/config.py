@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     # pgvector table in Phase 3, so keep it consistent once documents exist.
     gemini_embed_dim: int = 768
 
+    # --- PDF ingestion / chunking settings (Phase 5) ---
+    # A long document can't be embedded as one vector meaningfully, so we split
+    # it into overlapping chunks. Overlap keeps sentences that straddle a
+    # boundary retrievable from both sides.
+    chunk_size: int = 800  # characters per chunk
+    chunk_overlap: int = 100  # characters shared between adjacent chunks
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
