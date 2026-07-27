@@ -22,3 +22,30 @@ class ChatRequest(BaseModel):
     the LLM itself is stateless — it only knows what we hand it in the prompt."""
 
     messages: list[Message]
+
+
+class TokenizeRequest(BaseModel):
+    """Body of POST /tokenize."""
+
+    text: str
+
+
+class TokenizeResponse(BaseModel):
+    """Metrics returned by POST /tokenize.
+
+    Characters/words are cheap local counts; tokens come from the model's real
+    tokenizer. Cost and context% help build intuition for how much of the
+    model's budget a prompt consumes.
+    """
+
+    model: str
+    characters: int
+    words: int
+    tokens: int
+    context_window: int
+    context_used_percent: float
+    # Actual cost on the free tier (always 0). Kept explicit so the UI can show
+    # "$0.00 (free tier)" honestly.
+    estimated_cost_usd: float
+    # What this many tokens would cost at paid-tier pricing — for intuition.
+    reference_cost_usd: float

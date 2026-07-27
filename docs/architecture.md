@@ -29,6 +29,7 @@ Browser (React)  ──HTTP/SSE──►  FastAPI backend  ──►  Gemini LLM
 | Phase | Feature | Status |
 | ----- | ------- | ------ |
 | 0 | ChatGPT-style streaming chat | ✅ Done |
+| 1 | Token inspector | ✅ Done |
 
 ## Current data flow (Phase 0)
 
@@ -40,6 +41,19 @@ Browser (React)  ──HTTP/SSE──►  FastAPI backend  ──►  Gemini LLM
 5. Backend wraps each token as a Server-Sent Event (SSE) and streams it back.
 6. Frontend appends each token to the on-screen assistant bubble in real time.
 ```
+
+## Phase 1: why tokens matter
+
+LLMs don't read characters or words — they read **tokens** (sub-word chunks).
+Every context-window limit and every price is measured in tokens. The Token
+Inspector makes this visible: type text and see its exact token count (from the
+model's own tokenizer), how much of the context window it uses, and what it
+would cost. This is the mental foundation for everything that follows — RAG,
+memory, and agents are all about *choosing which tokens to spend*.
+
+Flow: `UI textarea` ➔ (debounced) `POST /api/tokenize` ➔ `Gemini count_tokens`
+➔ metrics rendered as cards. Character/word counts are computed instantly in
+the browser; only the exact token count needs the backend.
 
 ## Why streaming (SSE)?
 

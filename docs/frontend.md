@@ -8,8 +8,10 @@ React + TypeScript + Tailwind (built with Vite). A single-page chat UI.
 | ---- | -------------- |
 | `index.html` | HTML entry point; mounts the React app into `#root`. |
 | `src/main.tsx` | React bootstrap. |
-| `src/App.tsx` | The whole chat UI: message list, input box, send logic. |
-| `src/services/api.ts` | Calls `POST /api/chat` and parses the SSE stream. |
+| `src/App.tsx` | App shell: header + tabs switching between Chat and Token Inspector. |
+| `src/components/Chat.tsx` | The chat UI: message list, input box, send logic. |
+| `src/components/TokenInspector.tsx` | Phase 1: live token metrics for typed text. |
+| `src/services/api.ts` | Calls `POST /api/chat` (SSE) and `POST /api/tokenize`. |
 | `src/index.css` | Imports Tailwind. |
 | `vite.config.ts` | Dev server + proxy (`/api` → backend on :8000). |
 
@@ -27,6 +29,13 @@ response body as a stream:
 
 `App.tsx` reacts to those handlers by appending text to the last (assistant)
 message in React state, so the bubble fills in live.
+
+## Token Inspector (Phase 1)
+
+`TokenInspector.tsx` counts characters and words instantly in the browser, but
+the exact **token** count must come from the model's tokenizer. To avoid one
+API call per keystroke, it **debounces**: it waits ~600ms after you stop typing,
+then calls `POST /api/tokenize`. A pending call is cancelled if you type again.
 
 ## The `/api` proxy
 

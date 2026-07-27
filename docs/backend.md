@@ -10,7 +10,8 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `config.py` | Loads settings from environment / `.env` (API key, model, CORS). |
 | `models.py` | Pydantic schemas (`Message`, `ChatRequest`) — the API contract. |
 | `api/chat.py` | The `POST /chat` endpoint. Streams the reply as SSE. |
-| `services/gemini.py` | Wrapper around the Gemini SDK. Converts messages and streams tokens. |
+| `api/tokens.py` | The `POST /tokenize` endpoint (Phase 1 token inspector). |
+| `services/gemini.py` | Wrapper around the Gemini SDK. Streams chat + counts tokens. |
 
 ## Endpoints
 
@@ -26,6 +27,31 @@ Response: an SSE stream (`text/event-stream`). Each event is a JSON object:
 - `{"type": "chunk", "content": "..."}` — a piece of the answer.
 - `{"type": "done"}` — the answer is complete.
 - `{"type": "error", "content": "..."}` — something failed.
+
+### `POST /tokenize`
+Request body:
+```json
+{ "text": "some text to measure" }
+```
+Response:
+```json
+{
+  "model": "gemini-2.5-flash",
+  "characters": 20,
+  "words": 4,
+  "tokens": 5,
+  "context_window": 1048576,
+  "context_used_percent": 0.000477,
+  "estimated_cost_usd": 0.0,
+  "reference_cost_usd": 0.0000015
+}
+```
+- `tokens` comes from Gemini's real tokenizer (`count_tokens`), so it is exact
+  for the configured model.
+- `estimated_cost_usd` is always `0.0` (free tier). `reference_cost_usd` shows
+  what the same tokens would cost at paid-tier pricing, for intuition.
+- Context window and paid-tier price are configurable in `config.py`
+  (`gemini_context_window`, `gemini_input_price_per_1m`).
 
 ## Key design decisions
 

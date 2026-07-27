@@ -10,6 +10,30 @@ export interface Message {
   content: string;
 }
 
+export interface TokenStats {
+  model: string;
+  characters: number;
+  words: number;
+  tokens: number;
+  context_window: number;
+  context_used_percent: number;
+  estimated_cost_usd: number;
+  reference_cost_usd: number;
+}
+
+// Ask the backend to tokenize a piece of text and return usage metrics.
+export async function tokenize(text: string): Promise<TokenStats> {
+  const response = await fetch("/api/tokenize", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) {
+    throw new Error(`Tokenize failed: ${response.status}`);
+  }
+  return response.json();
+}
+
 interface StreamHandlers {
   onChunk: (text: string) => void;
   onDone: () => void;

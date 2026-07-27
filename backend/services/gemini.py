@@ -41,3 +41,17 @@ def stream_chat(messages: list[Message]) -> Iterator[str]:
     for chunk in response:
         if chunk.text:
             yield chunk.text
+
+
+def count_tokens(text: str) -> int:
+    """Ask Gemini exactly how many tokens a piece of text costs.
+
+    Token counts are model-specific: the same words tokenize differently across
+    models. Rather than guess with a local heuristic, we use the model's own
+    tokenizer via the API so the number is exact for the model we actually use.
+    """
+    result = _client.models.count_tokens(
+        model=settings.gemini_model,
+        contents=[types.Content(role="user", parts=[types.Part(text=text)])],
+    )
+    return result.total_tokens

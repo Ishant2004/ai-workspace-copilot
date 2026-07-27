@@ -11,7 +11,7 @@ single application until it resembles a production AI copilot.
 | Phase | Feature | Status |
 | ----- | ------- | ------ |
 | 0 | ChatGPT-style streaming chat (Gemini) | ✅ Done |
-| 1 | Tokenization inspector | ⏳ Planned |
+| 1 | Tokenization inspector | ✅ Done |
 | 2 | Embedding service | ⏳ Planned |
 | 3+ | Vector DB, RAG, tools, agents, MCP… | ⏳ Planned |
 
