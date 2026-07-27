@@ -1,0 +1,6 @@
+- i want to make this project step by step, 1 feature at a time 
+- develop 1 feature then test it then push it to github (write the code and test it, pushing it github i will do that)
+- write just the basic code in first principles, i just want it to be functional and working
+- maintain a folder docs/ and inside it main markdown of how this project works, mental map, backend and frontend functioning 
+- on each feature implementation update these markdown 
+- in the root folder maintain a readme.md file for this project
