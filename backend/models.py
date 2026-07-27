@@ -49,3 +49,22 @@ class TokenizeResponse(BaseModel):
     estimated_cost_usd: float
     # What this many tokens would cost at paid-tier pricing — for intuition.
     reference_cost_usd: float
+
+
+class EmbedRequest(BaseModel):
+    """Body of POST /embed."""
+
+    text: str
+
+
+class EmbedResponse(BaseModel):
+    """A text embedding plus metadata.
+
+    `embedding` is a list of floats (a point in high-dimensional space).
+    `dimension` is its length. Same model + dimension must be reused for every
+    document so vectors are comparable in the vector DB later.
+    """
+
+    model: str
+    dimension: int
+    embedding: list[float]

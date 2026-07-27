@@ -1,10 +1,13 @@
 """Thin wrapper around the Google Gemini SDK.
 
-Phase 0 only needs one capability: take a list of chat messages and stream back
-the model's reply token-by-token. Everything Gemini-specific lives here so the
-rest of the app just sees a plain Python generator of text pieces.
+Everything Gemini-specific lives here so the rest of the app never imports the
+SDK directly. Capabilities exposed so far:
+  - stream_chat:  stream a chat reply token-by-token (Phase 0)
+  - count_tokens: exact token count for a string (Phase 1)
+  - embed_text:   turn a string into an embedding vector (Phase 2)
 """
 
+import math
 from collections.abc import Iterator
 
 from google import genai
@@ -41,6 +44,30 @@ def stream_chat(messages: list[Message]) -> Iterator[str]:
     for chunk in response:
         if chunk.text:
             yield chunk.text
+
+
+def embed_text(text: str) -> list[float]:
+    """Turn a string into an embedding: a fixed-length list of floats that
+    captures its meaning. Texts with similar meaning produce vectors that point
+    in similar directions — that is what makes semantic search possible later.
+
+    We truncate to `gemini_embed_dim` dimensions and normalize to unit length.
+    Google recommends normalizing when using a reduced dimension, and unit
+    vectors make cosine-similarity math in the vector DB simpler.
+    """
+    result = _client.models.embed_content(
+        model=settings.gemini_embed_model,
+        contents=text,
+        config=types.EmbedContentConfig(
+            output_dimensionality=settings.gemini_embed_dim
+        ),
+    )
+    vector = list(result.embeddings[0].values)
+
+    magnitude = math.sqrt(sum(v * v for v in vector))
+    if magnitude > 0:
+        vector = [v / magnitude for v in vector]
+    return vector
 
 
 def count_tokens(text: str) -> int:

@@ -12,8 +12,9 @@ single application until it resembles a production AI copilot.
 | ----- | ------- | ------ |
 | 0 | ChatGPT-style streaming chat (Gemini) | ✅ Done |
 | 1 | Tokenization inspector | ✅ Done |
-| 2 | Embedding service | ⏳ Planned |
-| 3+ | Vector DB, RAG, tools, agents, MCP… | ⏳ Planned |
+| 2 | Embedding service | ✅ Done |
+| 3 | Vector DB (pgvector) | ⏳ Planned |
+| 4+ | RAG, tools, agents, MCP… | ⏳ Planned |
 
 See [`plan.md`](plan.md) for the full roadmap.
 

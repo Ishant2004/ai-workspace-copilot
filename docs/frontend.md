@@ -8,10 +8,11 @@ React + TypeScript + Tailwind (built with Vite). A single-page chat UI.
 | ---- | -------------- |
 | `index.html` | HTML entry point; mounts the React app into `#root`. |
 | `src/main.tsx` | React bootstrap. |
-| `src/App.tsx` | App shell: header + tabs switching between Chat and Token Inspector. |
+| `src/App.tsx` | App shell: header + tabs (Chat / Token Inspector / Embeddings). |
 | `src/components/Chat.tsx` | The chat UI: message list, input box, send logic. |
 | `src/components/TokenInspector.tsx` | Phase 1: live token metrics for typed text. |
-| `src/services/api.ts` | Calls `POST /api/chat` (SSE) and `POST /api/tokenize`. |
+| `src/components/EmbedInspector.tsx` | Phase 2: embeds text and visualises the vector. |
+| `src/services/api.ts` | Calls `/api/chat` (SSE), `/api/tokenize`, `/api/embed`. |
 | `src/index.css` | Imports Tailwind. |
 | `vite.config.ts` | Dev server + proxy (`/api` → backend on :8000). |
 
@@ -36,6 +37,20 @@ message in React state, so the bubble fills in live.
 the exact **token** count must come from the model's tokenizer. To avoid one
 API call per keystroke, it **debounces**: it waits ~600ms after you stop typing,
 then calls `POST /api/tokenize`. A pending call is cancelled if you type again.
+
+## Embeddings viewer (Phase 2)
+
+`EmbedInspector.tsx` sends text to `POST /api/embed` (debounced) and renders the
+returned vector two ways:
+
+- a **bar strip** (blue = positive, red = negative, height = magnitude), and
+- a **number grid** where each value is a chip showing its dimension index,
+  the signed value, and a subtle magnitude fill — so the vector is scannable
+  rather than a wall of digits.
+
+A segmented toggle chooses how many of the 768 values to show (12 / 28 / 52 /
+100); both views react to it. The goal is intuition — seeing that "meaning" is
+just a long list of numbers.
 
 ## The `/api` proxy
 

@@ -24,6 +24,14 @@ class Settings(BaseSettings):
     # economics of token usage.
     gemini_input_price_per_1m: float = 0.30
 
+    # --- Embedding settings (Phase 2) ---
+    gemini_embed_model: str = "gemini-embedding-001"
+    # Output vector size. gemini-embedding-001 natively produces 3072 dims but
+    # supports Matryoshka truncation to smaller sizes. 768 is a good balance of
+    # quality vs. storage; whatever we pick here becomes the column size of the
+    # pgvector table in Phase 3, so keep it consistent once documents exist.
+    gemini_embed_dim: int = 768
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

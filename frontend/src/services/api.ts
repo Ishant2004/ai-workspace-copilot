@@ -34,6 +34,25 @@ export async function tokenize(text: string): Promise<TokenStats> {
   return response.json();
 }
 
+export interface EmbedResult {
+  model: string;
+  dimension: number;
+  embedding: number[];
+}
+
+// Ask the backend to embed a piece of text into a numeric vector.
+export async function embed(text: string): Promise<EmbedResult> {
+  const response = await fetch("/api/embed", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) {
+    throw new Error(`Embed failed: ${response.status}`);
+  }
+  return response.json();
+}
+
 interface StreamHandlers {
   onChunk: (text: string) => void;
   onDone: () => void;

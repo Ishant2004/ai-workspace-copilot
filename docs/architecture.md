@@ -30,6 +30,7 @@ Browser (React)  ──HTTP/SSE──►  FastAPI backend  ──►  Gemini LLM
 | ----- | ------- | ------ |
 | 0 | ChatGPT-style streaming chat | ✅ Done |
 | 1 | Token inspector | ✅ Done |
+| 2 | Embedding service | ✅ Done |
 
 ## Current data flow (Phase 0)
 
@@ -54,6 +55,28 @@ memory, and agents are all about *choosing which tokens to spend*.
 Flow: `UI textarea` ➔ (debounced) `POST /api/tokenize` ➔ `Gemini count_tokens`
 ➔ metrics rendered as cards. Character/word counts are computed instantly in
 the browser; only the exact token count needs the backend.
+
+## Phase 2: embeddings
+
+An **embedding** maps text to a fixed-length vector of numbers (768 dims here)
+such that similar meanings produce vectors pointing in similar directions.
+Measuring the angle between two vectors (cosine similarity) tells you how
+related two pieces of text are — regardless of exact wording.
+
+We verified this: "The cat sat on the mat" is much closer to "A kitten is
+resting on a rug" (0.73) than to "Quarterly revenue grew 12%" (0.53).
+
+This is the engine of semantic search. In the next phases we will store these
+vectors in a database (Phase 3) and use them to retrieve relevant context for
+the LLM (RAG, Phase 4).
+
+Flow: `UI textarea` ➔ (debounced) `POST /api/embed` ➔ `Gemini embed_content`
+➔ vector normalized to unit length ➔ rendered as bars.
+
+Key choice: **dimension is fixed by config** (`GEMINI_EMBED_DIM`, default 768).
+Every document must be embedded with the same model and dimension, or the
+vectors are not comparable. This value becomes the pgvector column size in
+Phase 3.
 
 ## Why streaming (SSE)?
 

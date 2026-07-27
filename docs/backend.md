@@ -11,7 +11,8 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `models.py` | Pydantic schemas (`Message`, `ChatRequest`) — the API contract. |
 | `api/chat.py` | The `POST /chat` endpoint. Streams the reply as SSE. |
 | `api/tokens.py` | The `POST /tokenize` endpoint (Phase 1 token inspector). |
-| `services/gemini.py` | Wrapper around the Gemini SDK. Streams chat + counts tokens. |
+| `api/embed.py` | The `POST /embed` endpoint (Phase 2 embedding service). |
+| `services/gemini.py` | Wrapper around the Gemini SDK: chat, tokens, embeddings. |
 
 ## Endpoints
 
@@ -52,6 +53,26 @@ Response:
   what the same tokens would cost at paid-tier pricing, for intuition.
 - Context window and paid-tier price are configurable in `config.py`
   (`gemini_context_window`, `gemini_input_price_per_1m`).
+
+### `POST /embed`
+Request body:
+```json
+{ "text": "some text to embed" }
+```
+Response:
+```json
+{
+  "model": "gemini-embedding-001",
+  "dimension": 768,
+  "embedding": [-0.0385, 0.026, 0.0029, "…768 floats total"]
+}
+```
+- The vector is **normalized to unit length** in `services/gemini.py`. Google
+  recommends this when truncating the embedding to fewer than 3072 dims, and
+  unit vectors make cosine similarity a plain dot product later.
+- Model and dimension are configurable in `config.py` /`.env`
+  (`gemini_embed_model`, `gemini_embed_dim`). **Do not change the dimension
+  after storing documents** — old and new vectors would be incomparable.
 
 ## Key design decisions
 
