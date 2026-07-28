@@ -144,3 +144,34 @@ class SearchResponse(BaseModel):
     query: str
     mode: str
     results: list[SearchHit]
+
+
+# --- Conversation memory (Phase 9) ---
+
+
+class ThreadCreate(BaseModel):
+    """Body of POST /threads (title optional)."""
+
+    title: str = "New chat"
+
+
+class ThreadItem(BaseModel):
+    id: int
+    title: str
+    message_count: int = 0
+
+
+class ThreadMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class ThreadChatRequest(BaseModel):
+    """Body of POST /threads/{id}/chat — one new user message to answer.
+
+    Only the new message is sent; the backend loads the rest of the thread's
+    history from the database itself.
+    """
+
+    content: str
+    rag: bool = False  # ground the answer in stored documents

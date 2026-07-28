@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.5-flash-lite"
+    gemini_model: str = "gemini-3.1-flash-lite"
     cors_origins: str = "http://localhost:5173"
 
     # --- Token inspector settings (Phase 1) ---
@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     rerank_model: str = "ms-marco-MiniLM-L-12-v2"
     # How many candidates to retrieve before reranking down to k.
     rerank_candidates: int = 20
+
+    # --- Conversation memory (Phase 9) ---
+    # The LLM is stateless, so we resend history each turn. To bound the prompt
+    # (and cost), we only send the most recent N messages — a "sliding window".
+    history_window: int = 20
 
     @property
     def cors_origin_list(self) -> list[str]:

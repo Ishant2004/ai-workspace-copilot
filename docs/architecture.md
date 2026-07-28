@@ -37,6 +37,7 @@ Browser (React)  ──HTTP/SSE──►  FastAPI backend  ──►  Gemini LLM
 | 6 | Advanced chunking & metadata | ✅ Done |
 | 7 | Hybrid search (keyword + vector, RRF) | ✅ Done |
 | 8 | Reranker (cross-encoder) | ✅ Done |
+| 9 | Conversation memory & threads | ✅ Done |
 
 ## Current data flow (Phase 0)
 
@@ -262,6 +263,43 @@ close enough that the ordering is shaky. The reranker scored the true answer
 (Return policy) **0.98** and every distractor **~0.00**: a far sharper, more
 confident ranking. That precision boost is the whole point of stage-two
 reranking.
+
+## Phase 9: conversation memory & threads
+
+The LLM is **stateless** — it only knows what's in the prompt. Everything that
+feels like "memory" is something *we* store and replay. Until now the frontend
+held the conversation in React state and resent it each turn; refresh the page
+and it was gone. Phase 9 makes conversations durable.
+
+Two Postgres tables (`services/threads.py`):
+
+```
+threads(id, title, created_at)
+messages(id, thread_id → threads, role, content, created_at)
+```
+
+The flow changes: the frontend now sends only the **new** message to
+`POST /threads/{id}/chat`. The backend:
+1. saves the user message (so it survives even if generation fails),
+2. auto-titles a new thread from its first message,
+3. replays a **sliding window** — the most recent `history_window` (20)
+   messages — to the model, so the prompt (and cost) stays bounded no matter how
+   long the conversation grows,
+4. streams the reply, then saves the assistant message.
+
+Reloading a thread (`GET /threads/{id}/messages`) reconstructs the whole
+conversation. The Chat tab now has a sidebar: new chat, switch between past
+conversations, delete (cascade removes its messages). RAG still works per-turn
+via the `rag` flag, which retrieves with hybrid search and grounds the answer.
+
+Verified: threads persist across restarts; the sliding window returns only the
+last N messages oldest-first; the sidebar lists/loads/deletes conversations; and
+a "what is my name?" follow-up was answered correctly from earlier turns —
+memory recall working.
+
+> The optional Upstash Redis cache from the plan is deferred: Postgres already
+> gives durable history, and the sliding window needs no external cache. Redis
+> would be a latency optimization for very high traffic.
 
 ## Why streaming (SSE)?
 

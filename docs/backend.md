@@ -14,12 +14,14 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `api/embed.py` | The `POST /embed` endpoint (Phase 2 embedding service). |
 | `api/documents.py` | Document CRUD + `POST /search` (Phase 3). |
 | `api/rag.py` | `POST /rag/chat` — grounded, cited streaming chat (Phase 4). |
+| `api/threads.py` | Conversation CRUD + persisted streaming chat (Phase 9). |
 | `api/upload.py` | `POST /upload` — PDF ingestion pipeline (Phase 5). |
 | `prompts.py` | Prompt templates (the RAG grounding system prompt). |
 | `services/gemini.py` | Gemini SDK: chat, tokens, single + batch embeddings. |
 | `services/db.py` | Vector DB access: init, insert, cosine + keyword search. |
 | `services/search.py` | Search strategies: vector / keyword / hybrid (RRF). |
 | `services/rerank.py` | Cross-encoder reranking with FlashRank (Phase 8). |
+| `services/threads.py` | Conversation persistence: threads/messages, sliding window. |
 | `services/pdf.py` | Extract text from PDF bytes, per page (pypdf). |
 | `services/chunking.py` | Recursive boundary-aware chunking with overlap. |
 
@@ -125,6 +127,17 @@ Response:
 
 ### `GET /documents/count`
 Returns `{ "total_documents": N }`. Used by the UI badge.
+
+### Conversation threads (Phase 9)
+- `POST /threads` → create a conversation `{ id, title, message_count }`.
+- `GET /threads` → list conversations (most recently active first).
+- `GET /threads/{id}/messages` → full history `[{role, content}]`.
+- `DELETE /threads/{id}` → delete (messages cascade).
+- `POST /threads/{id}/chat` — body `{ content, rag }`. Persists the user
+  message, replays the last `history_window` messages to the model, streams the
+  reply (SSE, same events as `/chat`, plus a `sources` event when `rag`), then
+  persists the assistant reply. New threads are auto-titled from the first
+  message.
 
 > Requires `DATABASE_URL` (a Neon Postgres URL). The table + `vector` extension
 > are created automatically on startup. Embedding dimension must match

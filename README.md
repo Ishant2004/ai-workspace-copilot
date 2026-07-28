@@ -19,7 +19,8 @@ single application until it resembles a production AI copilot.
 | 6 | Advanced chunking & metadata | ✅ Done |
 | 7 | Hybrid search (keyword + vector) | ✅ Done |
 | 8 | Reranker (cross-encoder) | ✅ Done |
-| 9+ | Memory, tools, agents, MCP… | ⏳ Planned |
+| 9 | Conversation memory & threads | ✅ Done |
+| 10+ | Tool calling, agents, MCP… | ⏳ Planned |
 
 See [`plan.md`](plan.md) for the full roadmap.
 

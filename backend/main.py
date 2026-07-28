@@ -13,10 +13,11 @@ from api.chat import router as chat_router
 from api.documents import router as documents_router
 from api.embed import router as embed_router
 from api.rag import router as rag_router
+from api.threads import router as threads_router
 from api.tokens import router as tokens_router
 from api.upload import router as upload_router
 from config import settings
-from services import db
+from services import db, threads
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -29,11 +30,12 @@ async def lifespan(app: FastAPI):
     if settings.database_url:
         try:
             db.init_db()
-            logger.info("Vector DB initialised.")
+            threads.init_threads()
+            logger.info("Vector DB + conversation tables initialised.")
         except Exception as exc:
-            logger.warning("Could not initialise vector DB: %s", exc)
+            logger.warning("Could not initialise database: %s", exc)
     else:
-        logger.warning("DATABASE_URL not set — /documents and /search disabled.")
+        logger.warning("DATABASE_URL not set — DB-backed features disabled.")
     yield
 
 
@@ -54,6 +56,7 @@ app.include_router(embed_router)
 app.include_router(documents_router)
 app.include_router(rag_router)
 app.include_router(upload_router)
+app.include_router(threads_router)
 
 
 @app.get("/health")

@@ -9,7 +9,7 @@ React + TypeScript + Tailwind (built with Vite). A single-page chat UI.
 | `index.html` | HTML entry point; mounts the React app into `#root`. |
 | `src/main.tsx` | React bootstrap. |
 | `src/App.tsx` | App shell: header + tabs. Keeps all tabs mounted (see below). |
-| `src/components/Chat.tsx` | Chat UI + RAG toggle and sources strip (Phases 0 & 4). |
+| `src/components/Chat.tsx` | Chat UI: thread sidebar, RAG toggle, sources (Phases 0/4/9). |
 | `src/components/TokenInspector.tsx` | Phase 1: live token metrics for typed text. |
 | `src/components/EmbedInspector.tsx` | Phase 2: embeds text and visualises the vector. |
 | `src/components/VectorSearch.tsx` | Phases 3 & 5: add/upload docs + semantic search. |
@@ -100,17 +100,22 @@ badge (`matched_by`) so you can see which retriever(s) found it; the cosine
 When on, results carry a `rerank_score`, shown as a green `rerank X.XX` badge —
 the cross-encoder's confidence, usually far sharper than the cosine scores.
 
-## RAG in the Chat tab (Phase 4)
+## Chat tab: threads + RAG (Phases 4 & 9)
 
-The Chat tab has a checkbox: **"Ground answers in my documents (RAG)"**. When
-off, sending calls `streamChat` (`/api/chat`). When on, it calls `streamRag`
-(`/api/rag/chat`), which additionally receives a `sources` event.
+The Chat tab is a two-pane layout: a **sidebar** listing conversations (with
+"New chat" and per-row delete) and the conversation itself.
 
-Both share one SSE reader (`streamSse` in `api.ts`); the only difference is the
-URL and the optional `onSources` handler. Messages are stored as
-`DisplayMessage` (a `Message` plus an optional `sources` array); only
-`{role, content}` is sent to the backend. RAG answers render a small "Sources:"
-strip of `[#id] title` chips beneath the bubble.
+- Selecting a thread loads its history from `GET /api/threads/{id}/messages`.
+- Sending posts only the new message to `POST /api/threads/{id}/chat`
+  (`streamThreadChat`); a thread is created lazily on the first send. When the
+  stream finishes, the sidebar refreshes to pick up the auto-title.
+- The **"Ground answers in my documents (RAG)"** checkbox sets the `rag` flag on
+  that request; RAG answers additionally receive a `sources` event, rendered as
+  a small "Sources:" chip strip under the bubble.
+
+All streaming shares one SSE reader (`streamSse` in `api.ts`) with an optional
+`onSources` handler. Messages are stored as `DisplayMessage` (a `Message` plus
+an optional `sources` array).
 
 ## The `/api` proxy
 

@@ -254,3 +254,49 @@ export function streamRag(
 ): Promise<void> {
   return streamSse("/api/rag/chat", { messages, k: 4 }, handlers);
 }
+
+// --- Phase 9: conversation threads (persistent memory) ---
+
+export interface Thread {
+  id: number;
+  title: string;
+  message_count: number;
+}
+
+export async function listThreads(): Promise<Thread[]> {
+  const r = await fetch("/api/threads");
+  if (!r.ok) throw new Error(await errorText(r, "List threads"));
+  return r.json();
+}
+
+export async function createThread(): Promise<Thread> {
+  const r = await fetch("/api/threads", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  if (!r.ok) throw new Error(await errorText(r, "Create thread"));
+  return r.json();
+}
+
+export async function getThreadMessages(id: number): Promise<Message[]> {
+  const r = await fetch(`/api/threads/${id}/messages`);
+  if (!r.ok) throw new Error(await errorText(r, "Load thread"));
+  return r.json();
+}
+
+export async function deleteThread(id: number): Promise<void> {
+  const r = await fetch(`/api/threads/${id}`, { method: "DELETE" });
+  if (!r.ok) throw new Error(await errorText(r, "Delete thread"));
+}
+
+// Send one new message to a thread. The backend loads history itself and
+// persists both the question and the streamed answer.
+export function streamThreadChat(
+  threadId: number,
+  content: string,
+  rag: boolean,
+  handlers: StreamHandlers
+): Promise<void> {
+  return streamSse(`/api/threads/${threadId}/chat`, { content, rag }, handlers);
+}
