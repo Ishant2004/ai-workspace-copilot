@@ -6,6 +6,7 @@ import {
   listDocuments,
   searchDocuments,
   uploadPdf,
+  type DocMetadata,
   type DocumentItem,
   type SearchHit,
 } from "../services/api";
@@ -241,6 +242,7 @@ export default function VectorSearch() {
                   <p className="line-clamp-2 text-sm text-neutral-600">
                     {d.text}
                   </p>
+                  <MetaLine meta={d.metadata} />
                 </div>
                 <div className="flex shrink-0 gap-1">
                   <button
@@ -305,10 +307,34 @@ export default function VectorSearch() {
                 <SimilarityBadge score={h.similarity} />
               </div>
               <p className="line-clamp-3 text-sm text-neutral-600">{h.text}</p>
+              <MetaLine meta={h.metadata} />
             </div>
           ))}
         </div>
       </section>
+    </div>
+  );
+}
+
+// Shows a document's provenance (Phase 6 metadata): source, filename, page.
+// Renders nothing when there's no useful metadata (e.g. older rows).
+function MetaLine({ meta }: { meta?: DocMetadata }) {
+  if (!meta) return null;
+  const bits: string[] = [];
+  if (meta.source === "pdf" && meta.filename) bits.push(meta.filename);
+  else if (meta.source) bits.push(meta.source);
+  if (meta.page != null) bits.push(`p.${meta.page}`);
+  if (bits.length === 0) return null;
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {bits.map((b, i) => (
+        <span
+          key={i}
+          className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] text-neutral-500"
+        >
+          {b}
+        </span>
+      ))}
     </div>
   );
 }

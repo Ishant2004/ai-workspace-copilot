@@ -11,6 +11,8 @@ plus semantic search:
   POST   /search           — embed a query and return the most similar documents
 """
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, HTTPException
 
 from models import (
@@ -28,11 +30,18 @@ from services.gemini import embed_text
 router = APIRouter()
 
 
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 @router.post("/documents", response_model=DocumentResponse)
 def add_document(request: DocumentRequest) -> DocumentResponse:
     # Embed the text with the SAME model/dimension used for queries, then store.
     embedding = embed_text(request.text)
-    doc_id = db.insert_document(request.title, request.text, embedding)
+    metadata = {"source": "manual", "created_at": _now()}
+    doc_id = db.insert_document(
+        request.title, request.text, embedding, metadata
+    )
     return DocumentResponse(
         id=doc_id,
         title=request.title,

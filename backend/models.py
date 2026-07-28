@@ -97,6 +97,7 @@ class DocumentItem(BaseModel):
     id: int
     title: str
     text: str
+    metadata: dict = {}
 
 
 class DeleteResponse(BaseModel):
@@ -126,6 +127,7 @@ class SearchHit(BaseModel):
     title: str
     text: str
     similarity: float  # 0..1, higher = more relevant
+    metadata: dict = {}
 
 
 class SearchResponse(BaseModel):

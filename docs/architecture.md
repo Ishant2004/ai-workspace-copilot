@@ -34,6 +34,7 @@ Browser (React)  ──HTTP/SSE──►  FastAPI backend  ──►  Gemini LLM
 | 3 | Vector database (pgvector) | ✅ Done |
 | 4 | RAG (grounded answers) | ✅ Done |
 | 5 | PDF upload & ingestion | ✅ Done |
+| 6 | Advanced chunking & metadata | ✅ Done |
 
 ## Current data flow (Phase 0)
 
@@ -179,8 +180,34 @@ Verified: uploading a 1-page handbook PDF produced 2 chunks, and a query about
 > R2. That's just blob storage of the original and needs another free signup, so
 > it's deferred — the searchable content already lives in Postgres.
 
-Chunking here is deliberately simple (fixed-size character windows). Phase 6
-makes it boundary-aware and adds metadata.
+## Phase 6: advanced chunking & metadata
+
+Phase 5's chunker cut blindly every N characters, which can slice a sentence — or
+a word — in half. Phase 6 makes retrieval better in two ways:
+
+**Recursive (boundary-aware) chunking** (`services/chunking.py`). Instead of a
+hard cut, we try to break on natural boundaries first — paragraphs (`\n\n`),
+then lines, then sentences (`. `), then spaces — only falling back to a
+character cut when nothing fits, with overlap carried between chunks. Chunks
+stay semantically whole, so their embeddings (and retrieval) are cleaner.
+
+**Metadata** (a JSONB `metadata` column on `documents`). Every chunk now records
+where it came from: `source` (`pdf`/`manual`), `filename`, `page`,
+`chunk_index`, and a timestamp. Because PDFs are now extracted **per page**,
+each chunk knows its page number. Metadata rides along through search and the
+list API, and the UI shows a small `filename` / `p.N` badge on each result —
+so an answer can be traced back to a specific page of a specific file.
+
+The column is added with `ADD COLUMN IF NOT EXISTS ... DEFAULT '{}'`, so existing
+databases upgrade in place without losing data.
+
+Verified: a 2-page PDF produced 12 chunks tagged `page: 1` / `page: 2`; a query
+about "laptop encryption" retrieved a page-2 chunk, and the UI rendered the
+`twopage.pdf` / `p.2` badges.
+
+> Raw-file storage (Cloudflare R2) and OCR for scanned PDFs were prototyped but
+> rolled back to keep the diff focused; they can be re-added later. The
+> searchable content lives in Postgres regardless.
 
 ## Why streaming (SSE)?
 

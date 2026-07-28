@@ -20,6 +20,7 @@ from collections.abc import Iterator
 
 import psycopg
 from pgvector.psycopg import register_vector
+from psycopg.types.json import Jsonb
 
 from config import settings
 
@@ -60,25 +61,36 @@ def init_db() -> None:
                 title     TEXT,
                 text      TEXT NOT NULL,
                 embedding vector({dim}) NOT NULL,
+                metadata  JSONB NOT NULL DEFAULT '{{}}'::jsonb,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
             );
             """
         )
+        # Phase 6: add metadata to tables created before this column existed.
+        conn.execute(
+            "ALTER TABLE documents "
+            "ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL "
+            "DEFAULT '{}'::jsonb;"
+        )
 
 
-def insert_document(title: str, text: str, embedding: list[float]) -> int:
-    """Store one document + its embedding. Returns the new row id."""
+def insert_document(
+    title: str, text: str, embedding: list[float], metadata: dict | None = None
+) -> int:
+    """Store one document + its embedding + optional metadata. Returns the id."""
     with get_conn() as conn:
         row = conn.execute(
-            "INSERT INTO documents (title, text, embedding) "
-            "VALUES (%s, %s, %s) RETURNING id;",
-            (title, text, embedding),
+            "INSERT INTO documents (title, text, embedding, metadata) "
+            "VALUES (%s, %s, %s, %s) RETURNING id;",
+            (title, text, embedding, Jsonb(metadata or {})),
         ).fetchone()
         return row[0]
 
 
-def insert_documents(rows: list[tuple[str, str, list[float]]]) -> int:
-    """Insert many (title, text, embedding) rows in one connection.
+def insert_documents(
+    rows: list[tuple[str, str, list[float], dict]],
+) -> int:
+    """Insert many (title, text, embedding, metadata) rows in one connection.
 
     Used by PDF ingestion, where one file becomes many chunk rows. Batching
     the inserts over a single connection is much faster than reconnecting per
@@ -86,12 +98,14 @@ def insert_documents(rows: list[tuple[str, str, list[float]]]) -> int:
     """
     if not rows:
         return 0
+    # Wrap each metadata dict so psycopg stores it as jsonb.
+    params = [(t, x, e, Jsonb(m or {})) for (t, x, e, m) in rows]
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.executemany(
-                "INSERT INTO documents (title, text, embedding) "
-                "VALUES (%s, %s, %s);",
-                rows,
+                "INSERT INTO documents (title, text, embedding, metadata) "
+                "VALUES (%s, %s, %s, %s);",
+                params,
             )
     return len(rows)
 
@@ -107,7 +121,7 @@ def search(query_embedding: list[float], k: int) -> list[dict]:
         # Postgres float8[] otherwise, and `<=>` is only defined on vectors.
         rows = conn.execute(
             """
-            SELECT id, title, text,
+            SELECT id, title, text, metadata,
                    1 - (embedding <=> %s::vector) AS similarity
             FROM documents
             ORDER BY embedding <=> %s::vector
@@ -117,7 +131,13 @@ def search(query_embedding: list[float], k: int) -> list[dict]:
         ).fetchall()
 
     return [
-        {"id": r[0], "title": r[1], "text": r[2], "similarity": float(r[3])}
+        {
+            "id": r[0],
+            "title": r[1],
+            "text": r[2],
+            "metadata": r[3] or {},
+            "similarity": float(r[4]),
+        }
         for r in rows
     ]
 
@@ -130,9 +150,12 @@ def list_documents() -> list[dict]:
     """
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, title, text FROM documents ORDER BY id DESC;"
+            "SELECT id, title, text, metadata FROM documents ORDER BY id DESC;"
         ).fetchall()
-    return [{"id": r[0], "title": r[1], "text": r[2]} for r in rows]
+    return [
+        {"id": r[0], "title": r[1], "text": r[2], "metadata": r[3] or {}}
+        for r in rows
+    ]
 
 
 def update_document(

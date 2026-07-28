@@ -61,11 +61,23 @@ export interface AddDocResult {
   total_documents: number;
 }
 
+// Provenance stored with each document (Phase 6). All fields optional because
+// older/manual documents may not have them.
+export interface DocMetadata {
+  source?: string; // "pdf" | "manual"
+  filename?: string;
+  page?: number;
+  chunk_index?: number;
+  uploaded_at?: string;
+  created_at?: string;
+}
+
 export interface SearchHit {
   id: number;
   title: string;
   text: string;
   similarity: number;
+  metadata?: DocMetadata;
 }
 
 // Store a document: the backend embeds it and saves it in pgvector.
@@ -107,6 +119,7 @@ export interface DocumentItem {
   id: number;
   title: string;
   text: string;
+  metadata?: DocMetadata;
 }
 
 // List every stored document (no raw vectors) for the management view.

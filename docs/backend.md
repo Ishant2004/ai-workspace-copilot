@@ -18,8 +18,8 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `prompts.py` | Prompt templates (the RAG grounding system prompt). |
 | `services/gemini.py` | Gemini SDK: chat, tokens, single + batch embeddings. |
 | `services/db.py` | Vector DB access: init, insert, bulk insert, cosine search. |
-| `services/pdf.py` | Extract text from PDF bytes (pypdf). |
-| `services/chunking.py` | Split text into overlapping chunks. |
+| `services/pdf.py` | Extract text from PDF bytes, per page (pypdf). |
+| `services/chunking.py` | Recursive boundary-aware chunking with overlap. |
 
 ## Endpoints
 
@@ -130,13 +130,22 @@ The `system_instruction` support was added to `services/gemini.py` for this.
 Ingest a PDF. Multipart form field `file` (a `.pdf`).
 Response:
 ```json
-{ "filename": "handbook.pdf", "pages": 1, "chunks_stored": 2, "total_documents": 2 }
+{ "filename": "handbook.pdf", "pages": 2, "chunks_stored": 12, "total_documents": 12 }
 ```
-Pipeline: `services/pdf.extract_text` → `services/chunking.chunk_text`
-(`chunk_size`/`chunk_overlap` from config) → `services/gemini.embed_texts`
-(batched) → `db.insert_documents` (bulk). Each chunk becomes a normal document
-row, so it's immediately searchable and RAG-usable. Returns 400 for non-PDFs or
-PDFs with no extractable text (e.g. scanned images — no OCR here).
+Pipeline (Phase 6): `services/pdf.extract_pages` (per page) →
+`services/chunking.recursive_chunk` per page (`chunk_size`/`chunk_overlap` from
+config) → `services/gemini.embed_texts` (batched) → `db.insert_documents`
+(bulk, with metadata). Each chunk becomes a normal document row carrying
+`metadata` = `{source, filename, page, chunk_index, uploaded_at}`, so it's
+immediately searchable and RAG-usable and traceable to a page. Returns 400 for
+non-PDFs or PDFs with no extractable text (e.g. scanned images).
+
+### Metadata (Phase 6)
+`documents` has a `metadata JSONB` column. Search and list responses include a
+`metadata` object per row. Manually-added documents get
+`{source: "manual", created_at}`; PDF chunks get the fields above. The column is
+added idempotently on startup (`ADD COLUMN IF NOT EXISTS`), so existing
+databases upgrade without data loss.
 
 ## Key design decisions
 

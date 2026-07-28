@@ -84,7 +84,12 @@ hint about `DATABASE_URL`.
 **Upload a PDF (Phase 5):** a file input sends the chosen PDF to `POST
 /api/upload` as multipart form data (`uploadPdf` in `api.ts`). On success it
 shows how many chunks were stored and refreshes the list — the new chunks appear
-as `filename · chunk i/n` documents.
+as `filename · pN · chunk i/n` documents.
+
+**Metadata badges (Phase 6):** stored documents and search results render a
+small `MetaLine` — a `filename` and `p.N` badge — read from each item's
+`metadata` (source, filename, page). It renders nothing for rows without useful
+metadata.
 
 ## RAG in the Chat tab (Phase 4)
 
