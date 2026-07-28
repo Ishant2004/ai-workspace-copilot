@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     chunk_size: int = 800  # characters per chunk
     chunk_overlap: int = 100  # characters shared between adjacent chunks
 
+    # --- Reranker settings (Phase 8) ---
+    # FlashRank cross-encoder model, downloaded once on first use. MiniLM-L-12
+    # (~34MB, CPU) is noticeably more accurate than the tiny TinyBERT default
+    # while still running in-memory with no GPU or API calls.
+    rerank_model: str = "ms-marco-MiniLM-L-12-v2"
+    # How many candidates to retrieve before reranking down to k.
+    rerank_candidates: int = 20
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

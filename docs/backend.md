@@ -19,6 +19,7 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `services/gemini.py` | Gemini SDK: chat, tokens, single + batch embeddings. |
 | `services/db.py` | Vector DB access: init, insert, cosine + keyword search. |
 | `services/search.py` | Search strategies: vector / keyword / hybrid (RRF). |
+| `services/rerank.py` | Cross-encoder reranking with FlashRank (Phase 8). |
 | `services/pdf.py` | Extract text from PDF bytes, per page (pypdf). |
 | `services/chunking.py` | Recursive boundary-aware chunking with overlap. |
 
@@ -101,8 +102,10 @@ Delete a document. Response: `{ "id": 1, "deleted": true, "total_documents": 0 }
 Returns 404 if the id doesn't exist.
 
 ### `POST /search`
-Search. Body: `{ "query": "...", "k": 5, "mode": "hybrid" }`.
+Search. Body: `{ "query": "...", "k": 5, "mode": "hybrid", "rerank": false }`.
 `mode` is `vector` | `keyword` | `hybrid` (default `hybrid`, Phase 7).
+`rerank` (Phase 8) retrieves `rerank_candidates` (20) then trims to k with a
+cross-encoder; each hit then carries a `rerank_score`.
 Response:
 ```json
 {

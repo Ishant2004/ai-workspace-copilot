@@ -43,6 +43,7 @@ export default function VectorSearch() {
   // Search state.
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<SearchMode>("hybrid");
+  const [rerank, setRerank] = useState(false);
   const [searching, setSearching] = useState(false);
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -126,7 +127,7 @@ export default function VectorSearch() {
     setSearching(true);
     setSearchError(null);
     try {
-      setHits(await searchDocuments(query.trim(), 5, mode));
+      setHits(await searchDocuments(query.trim(), 5, mode, rerank));
     } catch (e) {
       setSearchError(e instanceof Error ? e.message : "Search failed");
       setHits(null);
@@ -304,6 +305,14 @@ export default function VectorSearch() {
             {searching ? "Searching…" : "Search"}
           </button>
         </div>
+        <label className="flex items-center gap-2 text-xs text-neutral-500">
+          <input
+            type="checkbox"
+            checked={rerank}
+            onChange={(e) => setRerank(e.target.checked)}
+          />
+          Rerank results with a cross-encoder (retrieves 20, keeps the best 5)
+        </label>
 
         {searchError && (
           <p className="text-sm text-red-600">[error] {searchError}</p>
@@ -334,6 +343,11 @@ export default function VectorSearch() {
                       {m}
                     </span>
                   ))}
+                  {h.rerank_score != null && (
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                      rerank {h.rerank_score.toFixed(2)}
+                    </span>
+                  )}
                   {h.similarity > 0 && <SimilarityBadge score={h.similarity} />}
                 </div>
               </div>

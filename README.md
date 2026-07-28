@@ -18,7 +18,8 @@ single application until it resembles a production AI copilot.
 | 5 | PDF upload & ingestion | ✅ Done |
 | 6 | Advanced chunking & metadata | ✅ Done |
 | 7 | Hybrid search (keyword + vector) | ✅ Done |
-| 8+ | Reranking, tools, agents, MCP… | ⏳ Planned |
+| 8 | Reranker (cross-encoder) | ✅ Done |
+| 9+ | Memory, tools, agents, MCP… | ⏳ Planned |
 
 See [`plan.md`](plan.md) for the full roadmap.
 
@@ -28,6 +29,7 @@ See [`plan.md`](plan.md) for the full roadmap.
 - **Backend:** FastAPI (Python)
 - **LLM & embeddings:** Google Gemini (AI Studio free tier)
 - **Vector DB:** Neon Postgres + `pgvector` (free tier)
+- **Reranker:** FlashRank cross-encoder (local, CPU, no API)
 
 ## Quick start
 

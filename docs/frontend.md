@@ -96,6 +96,10 @@ toggle passed to `POST /api/search`. Each result shows a `vector` / `keyword`
 badge (`matched_by`) so you can see which retriever(s) found it; the cosine
 `% match` badge only appears when there's a vector score.
 
+**Rerank (Phase 8):** a "Rerank" checkbox adds `rerank: true` to the request.
+When on, results carry a `rerank_score`, shown as a green `rerank X.XX` badge —
+the cross-encoder's confidence, usually far sharper than the cosine scores.
+
 ## RAG in the Chat tab (Phase 4)
 
 The Chat tab has a checkbox: **"Ground answers in my documents (RAG)"**. When

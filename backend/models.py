@@ -122,6 +122,8 @@ class SearchRequest(BaseModel):
     k: int = 5  # how many results to return
     # Which retrieval strategy to use (Phase 7).
     mode: Literal["vector", "keyword", "hybrid"] = "hybrid"
+    # Rerank the retrieved candidates with a cross-encoder (Phase 8).
+    rerank: bool = False
 
 
 class SearchHit(BaseModel):
@@ -134,6 +136,8 @@ class SearchHit(BaseModel):
     matched_by: list[str] = []
     # Fused rank score, present only for hybrid mode.
     rrf_score: float | None = None
+    # Cross-encoder score, present only when reranking is on (Phase 8).
+    rerank_score: float | None = None
 
 
 class SearchResponse(BaseModel):

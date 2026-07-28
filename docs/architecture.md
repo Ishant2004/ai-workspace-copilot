@@ -36,6 +36,7 @@ Browser (React)  ──HTTP/SSE──►  FastAPI backend  ──►  Gemini LLM
 | 5 | PDF upload & ingestion | ✅ Done |
 | 6 | Advanced chunking & metadata | ✅ Done |
 | 7 | Hybrid search (keyword + vector, RRF) | ✅ Done |
+| 8 | Reranker (cross-encoder) | ✅ Done |
 
 ## Current data flow (Phase 0)
 
@@ -235,6 +236,32 @@ hybrid, an `rrf_score`. The Vector Search tab has a mode toggle and shows a
 Verified: `mode=keyword` for "ERR-4021" returned only the exact-match doc;
 `mode=hybrid` for "expired token" ranked the doc matched by **both** retrievers
 first (RRF ≈ 0.033, cosine 72%) above vector-only matches.
+
+## Phase 8: reranking
+
+Retrieval (any mode above) is a **bi-encoder**: it embeds the query and each
+document *separately* and compares the vectors. That's fast (documents are
+pre-embedded) but approximate — it's good at "roughly about the same thing", weak
+at fine ordering. A **cross-encoder** instead reads the query and a candidate
+*together* and outputs a single relevance score. Much more accurate, but too slow
+to run over the whole corpus.
+
+The standard two-stage pattern: **retrieve ~20 cheap candidates, then rerank them
+down to the best few.** We use **FlashRank** (`services/rerank.py`) — a small
+cross-encoder (`ms-marco-MiniLM-L-12-v2`, ~34MB) that runs in-memory on CPU via
+ONNX, no GPU or API. The model loads lazily on first use.
+
+`POST /search` takes `rerank: true`; `run_search` then pulls
+`rerank_candidates` (20) via the chosen mode and trims to k with the
+cross-encoder. Each hit gains a `rerank_score`. The Vector Search tab has a
+"Rerank" checkbox and shows the score as a badge.
+
+Verified: for "how do I get a refund for an unused item?", retrieval returned
+five docs with *clustered* cosine scores (0.81 / 0.62 / 0.58 / 0.56 / 0.49) —
+close enough that the ordering is shaky. The reranker scored the true answer
+(Return policy) **0.98** and every distractor **~0.00**: a far sharper, more
+confident ranking. That precision boost is the whole point of stage-two
+reranking.
 
 ## Why streaming (SSE)?
 

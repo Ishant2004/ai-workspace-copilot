@@ -82,6 +82,7 @@ export interface SearchHit {
   metadata?: DocMetadata;
   matched_by?: string[]; // "vector" and/or "keyword" (Phase 7)
   rrf_score?: number | null; // fused score, hybrid mode only
+  rerank_score?: number | null; // cross-encoder score, when reranking (Phase 8)
 }
 
 // Store a document: the backend embeds it and saves it in pgvector.
@@ -103,12 +104,13 @@ export async function addDocument(
 export async function searchDocuments(
   query: string,
   k = 5,
-  mode: SearchMode = "hybrid"
+  mode: SearchMode = "hybrid",
+  rerank = false
 ): Promise<SearchHit[]> {
   const response = await fetch("/api/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, k, mode }),
+    body: JSON.stringify({ query, k, mode, rerank }),
   });
   if (!response.ok) throw new Error(await errorText(response, "Search"));
   const data = await response.json();

@@ -86,7 +86,7 @@ def delete_document(doc_id: int) -> DeleteResponse:
 def search(request: SearchRequest) -> SearchResponse:
     # Phase 7: run the chosen strategy (vector / keyword / hybrid). The service
     # handles embedding the query when the mode needs it.
-    hits = run_search(request.query, request.k, request.mode)
+    hits = run_search(request.query, request.k, request.mode, request.rerank)
     return SearchResponse(
         query=request.query,
         mode=request.mode,

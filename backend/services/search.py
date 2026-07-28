@@ -13,7 +13,8 @@ ranked highly by either retriever floats to the top; one ranked well by *both*
 wins decisively. It's simple, needs no score normalization, and works well.
 """
 
-from services import db
+from config import settings
+from services import db, rerank as rerank_service
 from services.gemini import embed_text
 
 # How many candidates to pull from each retriever before fusing.
@@ -23,24 +24,41 @@ _CANDIDATES = 20
 _RRF_K = 60
 
 
-def run_search(query: str, k: int, mode: str) -> list[dict]:
-    """Dispatch to the requested strategy: 'vector', 'keyword', or 'hybrid'."""
+def run_search(
+    query: str, k: int, mode: str, rerank: bool = False
+) -> list[dict]:
+    """Search, then optionally rerank.
+
+    When reranking, we first retrieve a larger candidate set (so the
+    cross-encoder has enough to choose from), then trim to k. Otherwise we just
+    retrieve k directly.
+    """
+    n = settings.rerank_candidates if rerank else k
+    hits = _retrieve(query, n, mode)
+    if rerank:
+        hits = rerank_service.rerank(query, hits, k)
+    return hits
+
+
+def _retrieve(query: str, n: int, mode: str) -> list[dict]:
+    """Return up to n candidates using the requested strategy."""
     if mode == "keyword":
-        hits = db.keyword_search(query, k)
+        hits = db.keyword_search(query, n)
         return [
             {**h, "similarity": 0.0, "matched_by": ["keyword"]} for h in hits
         ]
 
     if mode == "vector":
-        hits = db.search(embed_text(query), k)
+        hits = db.search(embed_text(query), n)
         return [{**h, "matched_by": ["vector"]} for h in hits]
 
-    return _hybrid(query, k)
+    return _hybrid(query, n)
 
 
 def _hybrid(query: str, k: int) -> list[dict]:
-    vector_hits = db.search(embed_text(query), _CANDIDATES)
-    keyword_hits = db.keyword_search(query, _CANDIDATES)
+    candidates = max(_CANDIDATES, k)
+    vector_hits = db.search(embed_text(query), candidates)
+    keyword_hits = db.keyword_search(query, candidates)
 
     scores: dict[int, float] = {}
     data: dict[int, dict] = {}
