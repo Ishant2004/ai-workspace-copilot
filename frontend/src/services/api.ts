@@ -72,12 +72,16 @@ export interface DocMetadata {
   created_at?: string;
 }
 
+export type SearchMode = "vector" | "keyword" | "hybrid";
+
 export interface SearchHit {
   id: number;
   title: string;
   text: string;
   similarity: number;
   metadata?: DocMetadata;
+  matched_by?: string[]; // "vector" and/or "keyword" (Phase 7)
+  rrf_score?: number | null; // fused score, hybrid mode only
 }
 
 // Store a document: the backend embeds it and saves it in pgvector.
@@ -94,15 +98,17 @@ export async function addDocument(
   return response.json();
 }
 
-// Semantic search: the backend embeds the query and returns nearest documents.
+// Search the documents. `mode` picks the strategy (Phase 7): vector (meaning),
+// keyword (exact terms), or hybrid (both, fused with RRF).
 export async function searchDocuments(
   query: string,
-  k = 5
+  k = 5,
+  mode: SearchMode = "hybrid"
 ): Promise<SearchHit[]> {
   const response = await fetch("/api/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, k }),
+    body: JSON.stringify({ query, k, mode }),
   });
   if (!response.ok) throw new Error(await errorText(response, "Search"));
   const data = await response.json();

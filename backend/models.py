@@ -120,16 +120,23 @@ class SearchRequest(BaseModel):
 
     query: str
     k: int = 5  # how many results to return
+    # Which retrieval strategy to use (Phase 7).
+    mode: Literal["vector", "keyword", "hybrid"] = "hybrid"
 
 
 class SearchHit(BaseModel):
     id: int
     title: str
     text: str
-    similarity: float  # 0..1, higher = more relevant
+    similarity: float  # cosine similarity 0..1 (0 for keyword-only hits)
     metadata: dict = {}
+    # Which retriever(s) surfaced this hit (Phase 7): "vector" and/or "keyword".
+    matched_by: list[str] = []
+    # Fused rank score, present only for hybrid mode.
+    rrf_score: float | None = None
 
 
 class SearchResponse(BaseModel):
     query: str
+    mode: str
     results: list[SearchHit]

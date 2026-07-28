@@ -35,6 +35,7 @@ Browser (React)  ──HTTP/SSE──►  FastAPI backend  ──►  Gemini LLM
 | 4 | RAG (grounded answers) | ✅ Done |
 | 5 | PDF upload & ingestion | ✅ Done |
 | 6 | Advanced chunking & metadata | ✅ Done |
+| 7 | Hybrid search (keyword + vector, RRF) | ✅ Done |
 
 ## Current data flow (Phase 0)
 
@@ -208,6 +209,32 @@ about "laptop encryption" retrieved a page-2 chunk, and the UI rendered the
 > Raw-file storage (Cloudflare R2) and OCR for scanned PDFs were prototyped but
 > rolled back to keep the diff focused; they can be re-added later. The
 > searchable content lives in Postgres regardless.
+
+## Phase 7: hybrid search
+
+Vector search matches *meaning* but can miss exact terms — names, codes, rare
+words that don't embed well (e.g. an error code `ERR-4021`). Keyword search
+(Postgres full-text) matches *words* but is blind to synonyms and paraphrasing.
+Hybrid search runs both and fuses them, getting the best of each.
+
+- **Keyword** (`db.keyword_search`): a generated `text_search tsvector` column
+  (from title+text, GIN-indexed) matched with `websearch_to_tsquery` and scored
+  by `ts_rank`.
+- **Vector** (`db.search`): the Phase 3 cosine search.
+- **Fusion — Reciprocal Rank Fusion** (`services/search.py`): pull the top ~20
+  from each retriever, then score every document by `sum(1 / (k + rank))` across
+  the lists (k=60). RRF uses only *ranks*, not the raw scores (which live on
+  incomparable scales), so no normalization is needed. A document ranked well by
+  either retriever surfaces; one ranked well by *both* wins.
+
+`POST /search` takes a `mode` of `vector` | `keyword` | `hybrid` (default
+hybrid). Each hit reports `matched_by` (which retrievers found it) and, for
+hybrid, an `rrf_score`. The Vector Search tab has a mode toggle and shows a
+`vector` / `keyword` badge on each result.
+
+Verified: `mode=keyword` for "ERR-4021" returned only the exact-match doc;
+`mode=hybrid` for "expired token" ranked the doc matched by **both** retrievers
+first (RRF ≈ 0.033, cosine 72%) above vector-only matches.
 
 ## Why streaming (SSE)?
 

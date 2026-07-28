@@ -17,7 +17,8 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `api/upload.py` | `POST /upload` — PDF ingestion pipeline (Phase 5). |
 | `prompts.py` | Prompt templates (the RAG grounding system prompt). |
 | `services/gemini.py` | Gemini SDK: chat, tokens, single + batch embeddings. |
-| `services/db.py` | Vector DB access: init, insert, bulk insert, cosine search. |
+| `services/db.py` | Vector DB access: init, insert, cosine + keyword search. |
+| `services/search.py` | Search strategies: vector / keyword / hybrid (RRF). |
 | `services/pdf.py` | Extract text from PDF bytes, per page (pypdf). |
 | `services/chunking.py` | Recursive boundary-aware chunking with overlap. |
 
@@ -100,12 +101,24 @@ Delete a document. Response: `{ "id": 1, "deleted": true, "total_documents": 0 }
 Returns 404 if the id doesn't exist.
 
 ### `POST /search`
-Semantic search. Body: `{ "query": "...", "k": 5 }`.
+Search. Body: `{ "query": "...", "k": 5, "mode": "hybrid" }`.
+`mode` is `vector` | `keyword` | `hybrid` (default `hybrid`, Phase 7).
 Response:
 ```json
-{ "query": "...", "results": [ { "id": 1, "title": "...", "text": "...", "similarity": 0.69 } ] }
+{
+  "query": "...", "mode": "hybrid",
+  "results": [
+    { "id": 1, "title": "...", "text": "...", "similarity": 0.72,
+      "metadata": {...}, "matched_by": ["vector", "keyword"], "rrf_score": 0.0328 }
+  ]
+}
 ```
-`similarity` is `1 - cosine_distance` (0..1, higher = more relevant).
+- `similarity` is cosine similarity (`1 - cosine_distance`); `0.0` for
+  keyword-only hits.
+- `matched_by` lists which retrievers surfaced the hit.
+- `rrf_score` is the fused rank score (hybrid mode only).
+- Dispatch lives in `services/search.py`; keyword search uses the `text_search`
+  tsvector column added in `init_db`.
 
 ### `GET /documents/count`
 Returns `{ "total_documents": N }`. Used by the UI badge.

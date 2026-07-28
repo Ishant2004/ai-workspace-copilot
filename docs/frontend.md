@@ -91,6 +91,11 @@ small `MetaLine` — a `filename` and `p.N` badge — read from each item's
 `metadata` (source, filename, page). It renders nothing for rows without useful
 metadata.
 
+**Search modes (Phase 7):** the Search box has a `hybrid` / `vector` / `keyword`
+toggle passed to `POST /api/search`. Each result shows a `vector` / `keyword`
+badge (`matched_by`) so you can see which retriever(s) found it; the cosine
+`% match` badge only appears when there's a vector score.
+
 ## RAG in the Chat tab (Phase 4)
 
 The Chat tab has a checkbox: **"Ground answers in my documents (RAG)"**. When

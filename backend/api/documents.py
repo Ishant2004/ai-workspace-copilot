@@ -26,6 +26,7 @@ from models import (
 )
 from services import db
 from services.gemini import embed_text
+from services.search import run_search
 
 router = APIRouter()
 
@@ -83,12 +84,12 @@ def delete_document(doc_id: int) -> DeleteResponse:
 
 @router.post("/search", response_model=SearchResponse)
 def search(request: SearchRequest) -> SearchResponse:
-    # Embed the query into the same vector space, then let Postgres find the
-    # nearest document vectors by cosine distance.
-    query_embedding = embed_text(request.query)
-    hits = db.search(query_embedding, request.k)
+    # Phase 7: run the chosen strategy (vector / keyword / hybrid). The service
+    # handles embedding the query when the mode needs it.
+    hits = run_search(request.query, request.k, request.mode)
     return SearchResponse(
         query=request.query,
+        mode=request.mode,
         results=[SearchHit(**h) for h in hits],
     )
 

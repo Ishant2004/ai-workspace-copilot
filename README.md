@@ -17,7 +17,8 @@ single application until it resembles a production AI copilot.
 | 4 | RAG (grounded answers) | ✅ Done |
 | 5 | PDF upload & ingestion | ✅ Done |
 | 6 | Advanced chunking & metadata | ✅ Done |
-| 7+ | Hybrid search, reranking, tools, agents, MCP… | ⏳ Planned |
+| 7 | Hybrid search (keyword + vector) | ✅ Done |
+| 8+ | Reranking, tools, agents, MCP… | ⏳ Planned |
 
 See [`plan.md`](plan.md) for the full roadmap.
 

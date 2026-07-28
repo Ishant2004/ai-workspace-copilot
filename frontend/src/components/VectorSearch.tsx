@@ -9,6 +9,7 @@ import {
   type DocMetadata,
   type DocumentItem,
   type SearchHit,
+  type SearchMode,
 } from "../services/api";
 
 // Phase 3: Vector database demo (with full CRUD).
@@ -41,6 +42,7 @@ export default function VectorSearch() {
 
   // Search state.
   const [query, setQuery] = useState("");
+  const [mode, setMode] = useState<SearchMode>("hybrid");
   const [searching, setSearching] = useState(false);
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -124,7 +126,7 @@ export default function VectorSearch() {
     setSearching(true);
     setSearchError(null);
     try {
-      setHits(await searchDocuments(query.trim(), 5));
+      setHits(await searchDocuments(query.trim(), 5, mode));
     } catch (e) {
       setSearchError(e instanceof Error ? e.message : "Search failed");
       setHits(null);
@@ -266,7 +268,26 @@ export default function VectorSearch() {
 
       {/* Search */}
       <section className="space-y-2 rounded-lg border border-neutral-200 bg-white p-4">
-        <h2 className="text-sm font-semibold">Search</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Search</h2>
+          {/* Strategy toggle: vector (meaning), keyword (exact), hybrid (both). */}
+          <div className="flex gap-1 rounded-lg bg-neutral-100 p-1 text-xs">
+            {(["hybrid", "vector", "keyword"] as SearchMode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={
+                  "rounded-md px-2.5 py-1 font-medium capitalize transition " +
+                  (mode === m
+                    ? "bg-white text-neutral-900 shadow-sm"
+                    : "text-neutral-500 hover:text-neutral-800")
+                }
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex gap-2">
           <input
             className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
@@ -304,7 +325,17 @@ export default function VectorSearch() {
                 <span className="text-sm font-medium">
                   {h.title || `Document #${h.id}`}
                 </span>
-                <SimilarityBadge score={h.similarity} />
+                <div className="flex shrink-0 items-center gap-1">
+                  {(h.matched_by ?? []).map((m) => (
+                    <span
+                      key={m}
+                      className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700"
+                    >
+                      {m}
+                    </span>
+                  ))}
+                  {h.similarity > 0 && <SimilarityBadge score={h.similarity} />}
+                </div>
               </div>
               <p className="line-clamp-3 text-sm text-neutral-600">{h.text}</p>
               <MetaLine meta={h.metadata} />

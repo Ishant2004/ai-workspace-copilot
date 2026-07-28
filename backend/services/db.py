@@ -72,6 +72,19 @@ def init_db() -> None:
             "ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL "
             "DEFAULT '{}'::jsonb;"
         )
+        # Phase 7: a generated tsvector column powers keyword (full-text) search.
+        # It's kept in sync automatically from title+text, and a GIN index makes
+        # `@@` lookups fast.
+        conn.execute(
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS text_search tsvector "
+            "GENERATED ALWAYS AS ("
+            "  to_tsvector('english', coalesce(title, '') || ' ' || coalesce(text, ''))"
+            ") STORED;"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS documents_text_search_idx "
+            "ON documents USING GIN (text_search);"
+        )
 
 
 def insert_document(
@@ -137,6 +150,39 @@ def search(query_embedding: list[float], k: int) -> list[dict]:
             "text": r[2],
             "metadata": r[3] or {},
             "similarity": float(r[4]),
+        }
+        for r in rows
+    ]
+
+
+def keyword_search(query: str, k: int) -> list[dict]:
+    """Full-text keyword search (Phase 7).
+
+    Uses Postgres' text search: `websearch_to_tsquery` turns the user's words
+    into a query (handling quotes/AND/OR gracefully), `@@` matches it against
+    the precomputed `text_search` column, and `ts_rank` scores by term frequency
+    — the classic BM25-style keyword signal that vector search lacks (it's great
+    at exact terms, names, and codes that don't embed well).
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, title, text, metadata,
+                   ts_rank(text_search, q) AS rank
+            FROM documents, websearch_to_tsquery('english', %s) AS q
+            WHERE text_search @@ q
+            ORDER BY rank DESC
+            LIMIT %s;
+            """,
+            (query, k),
+        ).fetchall()
+    return [
+        {
+            "id": r[0],
+            "title": r[1],
+            "text": r[2],
+            "metadata": r[3] or {},
+            "rank": float(r[4]),
         }
         for r in rows
     ]
