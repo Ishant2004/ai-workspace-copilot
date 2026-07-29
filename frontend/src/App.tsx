@@ -21,7 +21,7 @@ export default function App() {
         <div className="mx-auto flex w-full max-w-2xl items-center justify-between">
           <div>
             <h1 className="text-lg font-semibold">AI Workspace Copilot</h1>
-            <p className="text-xs text-neutral-500">Phases 0–11</p>
+            <p className="text-xs text-neutral-500">Phases 0–12</p>
           </div>
           <nav className="flex gap-1 rounded-lg bg-neutral-100 p-1 text-sm">
             <TabButton active={tab === "chat"} onClick={() => setTab("chat")}>

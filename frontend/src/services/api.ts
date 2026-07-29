@@ -193,20 +193,36 @@ interface StreamHandlers {
   // Only tool calling emits these (Phase 10).
   onToolCall?: (name: string, args: Record<string, unknown>) => void;
   onToolResult?: (name: string, result: string) => void;
+  // Only the plan-and-execute agent emits these (Phase 12).
+  onPlan?: (steps: { task: string }[]) => void;
+  onStepStart?: (index: number, task: string) => void;
+  onStepResult?: (index: number, result: string) => void;
 }
 
-// Shared SSE reader used by both plain chat and RAG chat. It POSTs the body,
-// then reads the response stream and dispatches each `data: {...}` event.
+// Shared SSE reader used by all streaming endpoints. It POSTs the body, then
+// reads the response stream and dispatches each `data: {...}` event.
+//
+// Pass a `signal` (from an AbortController) to make the request cancellable: if
+// the model hangs, the caller can abort. We treat an abort as a graceful stop —
+// whatever was streamed so far is kept, no error is raised.
 async function streamSse(
   url: string,
   body: unknown,
-  handlers: StreamHandlers
+  handlers: StreamHandlers,
+  signal?: AbortSignal
 ): Promise<void> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (e) {
+    if ((e as Error)?.name === "AbortError") return; // stopped before response
+    throw e;
+  }
 
   if (!response.ok || !response.body) {
     handlers.onError(`Request failed: ${response.status}`);
@@ -219,29 +235,39 @@ async function streamSse(
 
   // Network chunks don't line up with SSE events, so we buffer and split on the
   // blank line that separates events.
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const events = buffer.split("\n\n");
-    buffer = events.pop() ?? ""; // keep the trailing partial event
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split("\n\n");
+      buffer = events.pop() ?? ""; // keep the trailing partial event
 
-    for (const event of events) {
-      const line = event.trim();
-      if (!line.startsWith("data:")) continue;
+      for (const event of events) {
+        const line = event.trim();
+        if (!line.startsWith("data:")) continue;
 
-      const payload = JSON.parse(line.slice(5).trim());
-      if (payload.type === "chunk") handlers.onChunk(payload.content);
-      else if (payload.type === "sources")
-        handlers.onSources?.(payload.sources);
-      else if (payload.type === "tool_call")
-        handlers.onToolCall?.(payload.name, payload.args);
-      else if (payload.type === "tool_result")
-        handlers.onToolResult?.(payload.name, payload.result);
-      else if (payload.type === "done") handlers.onDone();
-      else if (payload.type === "error") handlers.onError(payload.content);
+        const payload = JSON.parse(line.slice(5).trim());
+        if (payload.type === "chunk") handlers.onChunk(payload.content);
+        else if (payload.type === "sources")
+          handlers.onSources?.(payload.sources);
+        else if (payload.type === "tool_call")
+          handlers.onToolCall?.(payload.name, payload.args);
+        else if (payload.type === "tool_result")
+          handlers.onToolResult?.(payload.name, payload.result);
+        else if (payload.type === "plan") handlers.onPlan?.(payload.steps);
+        else if (payload.type === "step_start")
+          handlers.onStepStart?.(payload.index, payload.task);
+        else if (payload.type === "step_result")
+          handlers.onStepResult?.(payload.index, payload.result);
+        else if (payload.type === "done") handlers.onDone();
+        else if (payload.type === "error") handlers.onError(payload.content);
+      }
     }
+  } catch (e) {
+    // Aborting mid-stream throws here; that's an intentional stop, not an error.
+    if ((e as Error)?.name !== "AbortError") throw e;
   }
 }
 
@@ -297,7 +323,7 @@ export async function deleteThread(id: number): Promise<void> {
   if (!r.ok) throw new Error(await errorText(r, "Delete thread"));
 }
 
-export type ChatMode = "chat" | "rag" | "agent";
+export type ChatMode = "chat" | "rag" | "agent" | "plan";
 
 // Send one new message to a thread. The backend loads history itself and
 // persists both the question and the streamed answer. `mode` selects plain
@@ -306,8 +332,14 @@ export function streamThreadChat(
   threadId: number,
   content: string,
   mode: ChatMode,
-  handlers: StreamHandlers
+  handlers: StreamHandlers,
+  signal?: AbortSignal
 ): Promise<void> {
-  return streamSse(`/api/threads/${threadId}/chat`, { content, mode }, handlers);
+  return streamSse(
+    `/api/threads/${threadId}/chat`,
+    { content, mode },
+    handlers,
+    signal
+  );
 }
 

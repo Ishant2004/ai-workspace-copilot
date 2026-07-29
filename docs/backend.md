@@ -24,6 +24,7 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `services/rerank.py` | Cross-encoder reranking with FlashRank (Phase 8). |
 | `services/threads.py` | Conversation persistence: threads/messages, sliding window. |
 | `services/tools.py` | Tool registry + the tool-call loop (backs the agent, Phases 10–11). |
+| `services/planner.py` | Plan-and-execute agent: plan → execute (retries) → synthesize (Phase 12). |
 | `services/pdf.py` | Extract text from PDF bytes, per page (pypdf). |
 | `services/chunking.py` | Recursive boundary-aware chunking with overlap. |
 
@@ -143,12 +144,14 @@ Returns `{ "total_documents": N }`. Used by the UI badge.
 - `GET /threads/{id}/messages` → full history `[{role, content}]`.
 - `DELETE /threads/{id}` → delete (messages cascade).
 - `POST /threads/{id}/chat` — body `{ content, mode }` where `mode` is
-  `chat` | `rag` | `agent`. Persists the user message, replays the last
+  `chat` | `rag` | `agent` | `plan`. Persists the user message, replays the last
   `history_window` messages, then:
   - `chat`: plain streamed reply;
   - `rag`: retrieves docs, emits a `sources` event, grounds the answer;
   - `agent` (Phase 11): runs the tool loop, emitting `tool_call` / `tool_result`
-    events before the streamed answer.
+    events before the streamed answer;
+  - `plan` (Phase 12): emits a `plan`, then `step_start` / `tool_call` /
+    `tool_result` / `step_result` per step, then the synthesized `answer`.
   The assistant reply is persisted; new threads are auto-titled.
 
 > Requires `DATABASE_URL` (a Neon Postgres URL). The table + `vector` extension

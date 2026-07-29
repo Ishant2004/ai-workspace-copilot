@@ -22,7 +22,8 @@ single application until it resembles a production AI copilot.
 | 9 | Conversation memory & threads | ✅ Done |
 | 10 | Tool calling (function calling) | ✅ Done |
 | 11 | ReAct agent (in chat) | ✅ Done |
-| 12+ | Planning, multi-agent, MCP… | ⏳ Planned |
+| 12 | Planning & task execution | ✅ Done |
+| 13+ | Long-term memory, multi-agent, MCP… | ⏳ Planned |
 
 See [`plan.md`](plan.md) for the full roadmap.
 

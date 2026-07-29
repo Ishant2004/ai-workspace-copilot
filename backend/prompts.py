@@ -60,3 +60,41 @@ def build_agent_system_prompt() -> str:
         "concise final answer. If tools can't help, answer from your own "
         "knowledge and say so."
     )
+
+
+def build_planner_prompt(goal: str) -> str:
+    """Ask the model to break a goal into a short ordered list of subtasks.
+
+    Planning up front (vs. the reactive agent) helps with complex, multi-part
+    requests: the model commits to a strategy, then each step is executed and
+    checked independently. We keep plans short so simple goals don't balloon.
+    """
+    return (
+        "Break the user's goal into a short ordered list of concrete subtasks "
+        "(at most 5). Each subtask should be a single, self-contained action, "
+        "phrased so it can be executed on its own. Tools available during "
+        "execution: search_documents, calculate, get_current_time. If the goal "
+        "is simple, a single step is fine.\n\n"
+        f"GOAL: {goal}"
+    )
+
+
+def build_step_prompt(goal: str, task: str, prior: list[str]) -> str:
+    """Prompt for executing one plan step, given the goal and prior results."""
+    context = "\n".join(prior) if prior else "(none yet)"
+    return (
+        f"Overall goal: {goal}\n\n"
+        f"Results of previous steps:\n{context}\n\n"
+        f"Now do this step and report just its result: {task}"
+    )
+
+
+def build_synthesis_prompt(goal: str, step_results: list[str]) -> str:
+    """Prompt to write the final answer from all executed step results."""
+    joined = "\n".join(step_results)
+    return (
+        f"The user's goal was: {goal}\n\n"
+        f"Here are the results of the steps taken:\n{joined}\n\n"
+        "Write a clear, concise final answer to the user's goal using these "
+        "results."
+    )

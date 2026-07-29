@@ -109,11 +109,16 @@ The Chat tab is a two-pane layout: a **sidebar** listing conversations (with
 - Sending posts only the new message to `POST /api/threads/{id}/chat`
   (`streamThreadChat`); a thread is created lazily on the first send. When the
   stream finishes, the sidebar refreshes to pick up the auto-title.
-- A **Chat / RAG / Agent** mode selector sets the `mode` on the request:
+- A **Chat / RAG / Agent / Plan** mode selector sets the `mode` on the request:
   - *RAG* answers additionally receive a `sources` event → "Sources:" chip strip.
   - *Agent* (Phase 11) answers receive `tool_call` / `tool_result` events,
-    rendered as amber **step cards** above the final answer, so you can see the
-    agent search, calculate, etc. before it responds.
+    rendered as amber **step cards** above the final answer.
+  - *Plan* (Phase 12) answers receive a `plan` event plus per-step
+    `step_start` / `tool_call` / `tool_result` / `step_result`, rendered as a
+    numbered **plan card** that fills in each step's tools and result as it runs.
+    (Tool events are attributed to the current step by capturing the step index
+    at event time — React batches state updates, so reading it lazily would
+    misattribute them.)
 
 All streaming shares one SSE reader (`streamSse` in `api.ts`) with an optional
 `onSources` handler. Messages are stored as `DisplayMessage` (a `Message` plus
@@ -122,6 +127,15 @@ an optional `sources` array).
 > Note: the agent (Phase 11) reuses the SSE reader's optional `onToolCall` /
 > `onToolResult` handlers. The standalone Tools tab from Phase 10 was folded
 > into the chat's Agent mode and removed.
+
+## Stopping a response
+
+The input's **Send** button becomes a red **Stop** while a response is
+streaming. `send()` creates an `AbortController` and passes its `signal` through
+`streamThreadChat` → `streamSse` → `fetch`. Clicking Stop aborts the request;
+`streamSse` treats an abort as a graceful end (keeps whatever streamed so far,
+raises no error), and a `finally` in `send()` resets the busy state. This is the
+escape hatch when the model is slow or hangs.
 
 ## The `/api` proxy
 

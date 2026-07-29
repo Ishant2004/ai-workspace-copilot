@@ -34,7 +34,7 @@ from prompts import (
     build_rag_system_prompt,
     format_context_block,
 )
-from services import threads, tools
+from services import planner, threads, tools
 from services.gemini import stream_chat
 from services.search import run_search
 
@@ -90,7 +90,16 @@ def thread_chat(thread_id: int, request: ThreadChatRequest) -> StreamingResponse
                 thread_id, settings.history_window
             )
 
-            if request.mode == "agent":
+            if request.mode == "plan":
+                # Phase 12: plan-and-execute. Emit the plan and each step's
+                # progress; the synthesized final answer arrives as `answer`.
+                for event in planner.run_plan(request.content):
+                    if event["type"] == "answer":
+                        reply += event["content"]
+                        yield _sse({"type": "chunk", "content": event["content"]})
+                    else:
+                        yield _sse(event)
+            elif request.mode == "agent":
                 # Phase 11: the agent decides which tools to call, looping until
                 # it can answer. Surface each tool call/result; the final answer
                 # arrives as `answer` events which we stream as chunks.

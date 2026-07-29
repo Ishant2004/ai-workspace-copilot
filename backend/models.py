@@ -176,10 +176,11 @@ class ThreadChatRequest(BaseModel):
       - "chat"  plain conversation
       - "rag"   grounded in retrieved documents (Phase 4)
       - "agent" ReAct agent that decides which tools to call (Phase 11)
+      - "plan"  plan-and-execute agent (Phase 12)
     """
 
     content: str
-    mode: Literal["chat", "rag", "agent"] = "chat"
+    mode: Literal["chat", "rag", "agent", "plan"] = "chat"
 
 
 class ToolsChatRequest(BaseModel):

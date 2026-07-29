@@ -40,6 +40,7 @@ Browser (React)  ──HTTP/SSE──►  FastAPI backend  ──►  Gemini LLM
 | 9 | Conversation memory & threads | ✅ Done |
 | 10 | Tool calling (function calling) | ✅ Done |
 | 11 | ReAct agent (in chat) | ✅ Done |
+| 12 | Planning & task execution | ✅ Done |
 
 ## Current data flow (Phase 0)
 
@@ -364,6 +365,33 @@ chained autonomously, inside a persisted conversation.
 > The difference from RAG: RAG *always* retrieves and is told to answer only
 > from documents. The agent retrieves *only if it decides to*, and can combine
 > retrieval with computation or other tools — a strict superset of behaviours.
+
+## Phase 12: planning & task execution
+
+The Phase 11 agent is *reactive* — it picks the next tool one step at a time,
+which can wander on complex, multi-part goals. A **plan-and-execute** agent
+(`services/planner.py`) instead commits to a strategy first:
+
+1. **Plan** — the model returns an explicit, ordered list of subtasks as JSON
+   (forced with a `response_schema`, so parsing is reliable).
+2. **Execute** — each subtask is run by the Phase 11 tool agent, with prior
+   results fed forward and **retries** (`MAX_RETRIES`) around transient model
+   errors. Each step reports its own result.
+3. **Synthesize** — the model writes the final answer from all step results.
+
+This is the fourth chat **mode** ("Plan"). `POST /threads/{id}/chat` streams the
+plan (`plan` event), each step's boundary and tools (`step_start`, `tool_call`,
+`tool_result`, `step_result`), then the final `answer`. The UI renders a numbered
+plan card where each step fills in its tools and result as it runs.
+
+Verified: "Find the Pro plan price per seat, then compute the annual cost for a
+team of 8." → planned two steps → step 1 `search_documents` ("$30/seat/mo") →
+step 2 `calculate("30 * 8 * 12")` = 2880 → answer "$2,880 annual for a team of
+8." The plan made the two-part strategy explicit before executing it.
+
+> Reactive (Phase 11) vs. plan-first (Phase 12) are complementary: reactive is
+> lighter for simple asks; planning shines when a request has clear sequential
+> parts. Both reuse the same tools.
 
 ## Why streaming (SSE)?
 

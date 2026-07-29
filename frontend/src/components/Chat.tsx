@@ -14,9 +14,16 @@ import {
 // One agent tool step (Phase 11): a tool call and, once run, its result.
 type Step = { name: string; args: Record<string, unknown>; result?: string };
 
-// A chat message plus, for RAG answers, the grounding docs and, for agent
-// answers, the tool steps taken to reach it.
-type DisplayMessage = Message & { sources?: SearchHit[]; steps?: Step[] };
+// One plan step (Phase 12): a subtask, the tools it used, and its result.
+type PlanStep = { task: string; result?: string; tools: Step[] };
+
+// A chat message plus, for RAG answers, the grounding docs; for agent answers,
+// the tool steps; and for plan answers, the plan.
+type DisplayMessage = Message & {
+  sources?: SearchHit[];
+  steps?: Step[];
+  plan?: PlanStep[];
+};
 
 // Phase 0: streaming chat. Phase 4: RAG grounding. Phase 9: persistent threads.
 // Phase 11: an "Agent" mode that lets the model call tools mid-conversation.
@@ -29,6 +36,18 @@ export default function Chat() {
   const [mode, setMode] = useState<ChatMode>("chat");
   const [dbError, setDbError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Lets us cancel an in-flight (possibly hanging) request.
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Grow the input to fit its content, up to a max height (then it scrolls).
+  // Runs whenever `input` changes — including when we clear it after sending.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [input]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -91,39 +110,103 @@ export default function Chat() {
       });
     };
 
-    await streamThreadChat(threadId, text, mode, {
+    // In plan mode, tool calls belong to the current step; track which one.
+    let currentStep = -1;
+
+    const attachToolCall = (
+      list: Step[],
+      name: string,
+      args: Record<string, unknown>
+    ) => [...list, { name, args }];
+
+    const attachToolResult = (list: Step[], result: string) => {
+      const copy = [...list];
+      for (let i = copy.length - 1; i >= 0; i--) {
+        if (copy[i].result === undefined) {
+          copy[i] = { ...copy[i], result };
+          break;
+        }
+      }
+      return copy;
+    };
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      await streamThreadChat(
+        threadId,
+        text,
+        mode,
+        {
       onChunk: (extra) =>
         updateAssistant((m) => ({ ...m, content: m.content + extra })),
       onSources: (sources) => updateAssistant((m) => ({ ...m, sources })),
-      onToolCall: (name, args) =>
+      onPlan: (steps) =>
         updateAssistant((m) => ({
           ...m,
-          steps: [...(m.steps ?? []), { name, args }],
+          plan: steps.map((s) => ({ task: s.task, tools: [] })),
         })),
-      onToolResult: (name, result) =>
-        updateAssistant((m) => {
-          // Attach the result to the most recent matching, unresolved call.
-          const steps = [...(m.steps ?? [])];
-          for (let i = steps.length - 1; i >= 0; i--) {
-            if (steps[i].name === name && steps[i].result === undefined) {
-              steps[i] = { ...steps[i], result };
-              break;
-            }
-          }
-          return { ...m, steps };
-        }),
-      onDone: () => {
-        setBusy(false);
-        refreshThreads();
+      onStepStart: (index) => {
+        currentStep = index;
       },
-      onError: (msg) => {
+      onStepResult: (index, result) =>
+        updateAssistant((m) => {
+          const plan = [...(m.plan ?? [])];
+          if (plan[index]) plan[index] = { ...plan[index], result };
+          return { ...m, plan };
+        }),
+      onToolCall: (name, args) => {
+        // Capture the step index NOW; the state updater may run later (React
+        // batching), by which time `currentStep` could have advanced.
+        const idx = currentStep;
+        updateAssistant((m) => {
+          if (m.plan && idx >= 0 && m.plan[idx]) {
+            const plan = [...m.plan];
+            plan[idx] = {
+              ...plan[idx],
+              tools: attachToolCall(plan[idx].tools, name, args),
+            };
+            return { ...m, plan };
+          }
+          return { ...m, steps: attachToolCall(m.steps ?? [], name, args) };
+        });
+      },
+      onToolResult: (_name, result) => {
+        const idx = currentStep;
+        updateAssistant((m) => {
+          if (m.plan && idx >= 0 && m.plan[idx]) {
+            const plan = [...m.plan];
+            plan[idx] = {
+              ...plan[idx],
+              tools: attachToolResult(plan[idx].tools, result),
+            };
+            return { ...m, plan };
+          }
+          return { ...m, steps: attachToolResult(m.steps ?? [], result) };
+        });
+      },
+      onDone: () => {},
+      onError: (msg) =>
         updateAssistant((m) => ({
           ...m,
           content: m.content + `\n\n[error] ${msg}`,
-        }));
-        setBusy(false);
-      },
-    });
+        })),
+        },
+        controller.signal
+      );
+    } finally {
+      // Runs on normal completion AND on stop/abort: reset state and refresh
+      // the sidebar (title/message counts).
+      setBusy(false);
+      abortRef.current = null;
+      refreshThreads();
+    }
+  }
+
+  // Stop a running (possibly hanging) generation, keeping the partial reply.
+  function stop() {
+    abortRef.current?.abort();
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
@@ -138,7 +221,9 @@ export default function Chat() {
       ? "Ask about your stored documents."
       : mode === "agent"
         ? "Ask something — the agent can search docs, do math, tell the time."
-        : "Ask me anything to get started.";
+        : mode === "plan"
+          ? "Give a multi-step goal — it'll plan, then execute each step."
+          : "Ask me anything to get started.";
 
   return (
     <div className="flex h-full">
@@ -194,7 +279,8 @@ export default function Chat() {
               key={i}
               className={m.role === "user" ? "text-right" : "text-left"}
             >
-              {/* Agent tool steps appear above the answer. */}
+              {/* Plan (Phase 12) and agent tool steps appear above the answer. */}
+              {m.plan && m.plan.length > 0 && <Plan plan={m.plan} />}
               {m.steps && m.steps.length > 0 && <Steps steps={m.steps} />}
               {(m.content || m.role === "user" || busy) && (
                 <div
@@ -220,7 +306,7 @@ export default function Chat() {
           <div className="mx-auto w-full max-w-2xl space-y-2">
             {/* Mode selector: plain chat, RAG grounding, or tool-using agent. */}
             <div className="flex gap-1 rounded-lg bg-neutral-100 p-1 text-xs">
-              {(["chat", "rag", "agent"] as ChatMode[]).map((m) => (
+              {(["chat", "rag", "agent", "plan"] as ChatMode[]).map((m) => (
                 <button
                   key={m}
                   onClick={() => setMode(m)}
@@ -235,26 +321,75 @@ export default function Chat() {
                 </button>
               ))}
             </div>
-            <div className="flex gap-2">
+            {/* items-end keeps the Send button its natural height while the
+                textarea grows upward. */}
+            <div className="flex items-end gap-2">
               <textarea
-                className="flex-1 resize-none rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                ref={inputRef}
+                className="max-h-36 flex-1 resize-none overflow-y-auto rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 rows={1}
                 placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
               />
-              <button
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
-                onClick={send}
-                disabled={busy || !input.trim()}
-              >
-                Send
-              </button>
+              {busy ? (
+                <button
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white"
+                  onClick={stop}
+                  title="Stop generating"
+                >
+                  Stop
+                </button>
+              ) : (
+                <button
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+                  onClick={send}
+                  disabled={!input.trim()}
+                >
+                  Send
+                </button>
+              )}
             </div>
           </div>
         </footer>
       </div>
+    </div>
+  );
+}
+
+// The plan (Phase 12): a numbered checklist. Each step shows the tools it used
+// and its result once executed; a spinner dot marks steps still running.
+function Plan({ plan }: { plan: PlanStep[] }) {
+  return (
+    <div className="mb-1 max-w-[85%] space-y-2 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+      <div className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+        Plan
+      </div>
+      <ol className="space-y-2">
+        {plan.map((step, i) => (
+          <li key={i} className="text-sm">
+            <div className="flex items-start gap-2">
+              <span className="mt-0.5 text-xs text-indigo-500">
+                {step.result !== undefined ? "✓" : `${i + 1}.`}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-neutral-800">{step.task}</div>
+                {step.tools.map((t, j) => (
+                  <div key={j} className="mt-1 font-mono text-xs text-amber-800">
+                    🔧 {t.name}({JSON.stringify(t.args)})
+                  </div>
+                ))}
+                {step.result !== undefined && (
+                  <div className="mt-1 text-xs text-neutral-500">
+                    → {step.result}
+                  </div>
+                )}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
