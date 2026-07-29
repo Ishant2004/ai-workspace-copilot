@@ -171,7 +171,18 @@ class ThreadChatRequest(BaseModel):
 
     Only the new message is sent; the backend loads the rest of the thread's
     history from the database itself.
+
+    mode:
+      - "chat"  plain conversation
+      - "rag"   grounded in retrieved documents (Phase 4)
+      - "agent" ReAct agent that decides which tools to call (Phase 11)
     """
 
     content: str
-    rag: bool = False  # ground the answer in stored documents
+    mode: Literal["chat", "rag", "agent"] = "chat"
+
+
+class ToolsChatRequest(BaseModel):
+    """Body of POST /tools/chat — a message the model may answer using tools."""
+
+    message: str

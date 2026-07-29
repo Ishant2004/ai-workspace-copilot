@@ -60,6 +60,15 @@ def stream_chat(
             yield chunk.text
 
 
+def generate(contents, config=None):
+    """Low-level, non-streaming generation. Used by the tool-calling loop
+    (Phase 10), which needs the full response — including any function_call
+    parts — before deciding what to do next."""
+    return _client.models.generate_content(
+        model=settings.gemini_model, contents=contents, config=config
+    )
+
+
 def embed_text(text: str) -> list[float]:
     """Turn a string into an embedding: a fixed-length list of floats that
     captures its meaning. Texts with similar meaning produce vectors that point

@@ -38,6 +38,8 @@ Browser (React)  ──HTTP/SSE──►  FastAPI backend  ──►  Gemini LLM
 | 7 | Hybrid search (keyword + vector, RRF) | ✅ Done |
 | 8 | Reranker (cross-encoder) | ✅ Done |
 | 9 | Conversation memory & threads | ✅ Done |
+| 10 | Tool calling (function calling) | ✅ Done |
+| 11 | ReAct agent (in chat) | ✅ Done |
 
 ## Current data flow (Phase 0)
 
@@ -300,6 +302,68 @@ memory recall working.
 > The optional Upstash Redis cache from the plan is deferred: Postgres already
 > gives durable history, and the sliding window needs no external cache. Redis
 > would be a latency optimization for very high traffic.
+
+## Phase 10: tool calling (function calling)
+
+An LLM only emits text — it can't fetch live data or compute. **Tool calling**
+bridges that: we give the model a list of tool *declarations* (name,
+description, JSON-schema arguments); when it needs one, it replies with a
+structured `function_call` instead of prose. We run the real Python function and
+hand the result back, and the model continues with that knowledge.
+
+The loop is written explicitly (rather than the SDK's automatic function
+calling) so the mechanics are visible (`services/tools.py`):
+
+```
+prompt + tool declarations ─► model
+   ├─ returns function_call(s) ─► we execute ─► return results ─► (repeat)
+   └─ returns text ─► final answer
+```
+
+Three tools ship: `calculate` (safe arithmetic via an AST evaluator — never
+`eval`), `get_current_time`, and `search_documents` (runs Phase 7 hybrid search
+over the knowledge base). A `MAX_STEPS` cap prevents runaway loops.
+
+`POST /tools/chat` streams the *whole* process as SSE — `tool_call`,
+`tool_result`, then the final answer — and the Tools tab renders it as a
+timeline. Verified: "What is 128 * 47?" → model calls
+`calculate({"expression":"128 * 47"})` → result `6016` → answer "128 * 47 =
+6,016"; and "what is the office wifi password?" → model calls
+`search_documents` → answers from the retrieved chunk.
+
+This is the foundation of the next phase: an **agent** is just this loop plus
+reasoning about *which* tools to call and *when* to stop.
+
+## Phase 11: the ReAct agent (in the chat)
+
+Phase 10 proved the mechanics in a throwaway tab. Phase 11 makes it a real
+feature: the agent lives **inside the chat**, with full conversation history,
+and the tool loop *is* the agent's reasoning cycle — **Re**ason → **Act** (call
+a tool) → observe the result → repeat until it can answer.
+
+The Chat tab now has a three-way mode selector:
+
+- **Chat** — plain conversation.
+- **RAG** — always retrieve documents and ground the answer (Phase 4).
+- **Agent** — the model *decides* what to do: it may call `search_documents`,
+  `calculate`, `get_current_time`, chain several calls, and then answer. An
+  agent system prompt (`prompts.build_agent_system_prompt`) tells it which tool
+  fits which job.
+
+`POST /threads/{id}/chat` gained a `mode` field. In agent mode the endpoint runs
+`tools.run_tool_loop` over the thread's recent history and streams the same
+`tool_call` / `tool_result` events (rendered inline as amber step cards) before
+the final answer; both the question and answer are persisted like any turn.
+
+Verified end-to-end in the UI: "What is the monthly membership cost? Look it up
+and compute it." → the agent called `search_documents` (found "annual fee 240,
+billed monthly"), then `calculate("240 / 12")` → 20, then answered "$20.00 …
+dividing the annual fee of $240 by 12 months." Two different tools, chosen and
+chained autonomously, inside a persisted conversation.
+
+> The difference from RAG: RAG *always* retrieves and is told to answer only
+> from documents. The agent retrieves *only if it decides to*, and can combine
+> retrieval with computation or other tools — a strict superset of behaviours.
 
 ## Why streaming (SSE)?
 

@@ -15,6 +15,7 @@ from api.embed import router as embed_router
 from api.rag import router as rag_router
 from api.threads import router as threads_router
 from api.tokens import router as tokens_router
+from api.tools import router as tools_router
 from api.upload import router as upload_router
 from config import settings
 from services import db, threads
@@ -57,6 +58,7 @@ app.include_router(documents_router)
 app.include_router(rag_router)
 app.include_router(upload_router)
 app.include_router(threads_router)
+app.include_router(tools_router)
 
 
 @app.get("/health")

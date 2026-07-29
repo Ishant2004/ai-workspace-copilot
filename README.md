@@ -20,7 +20,9 @@ single application until it resembles a production AI copilot.
 | 7 | Hybrid search (keyword + vector) | ✅ Done |
 | 8 | Reranker (cross-encoder) | ✅ Done |
 | 9 | Conversation memory & threads | ✅ Done |
-| 10+ | Tool calling, agents, MCP… | ⏳ Planned |
+| 10 | Tool calling (function calling) | ✅ Done |
+| 11 | ReAct agent (in chat) | ✅ Done |
+| 12+ | Planning, multi-agent, MCP… | ⏳ Planned |
 
 See [`plan.md`](plan.md) for the full roadmap.
 

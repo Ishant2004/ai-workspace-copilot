@@ -29,8 +29,12 @@ from models import (
     ThreadItem,
     ThreadMessage,
 )
-from prompts import build_rag_system_prompt, format_context_block
-from services import threads
+from prompts import (
+    build_agent_system_prompt,
+    build_rag_system_prompt,
+    format_context_block,
+)
+from services import threads, tools
 from services.gemini import stream_chat
 from services.search import run_search
 
@@ -85,33 +89,48 @@ def thread_chat(thread_id: int, request: ThreadChatRequest) -> StreamingResponse
             window = threads.get_recent_messages(
                 thread_id, settings.history_window
             )
-            messages = [Message(role=m["role"], content=m["content"]) for m in window]
 
-            system_prompt = None
-            if request.rag:
-                hits = run_search(request.content, 4, "hybrid")
-                yield _sse(
-                    {
-                        "type": "sources",
-                        "sources": [
-                            {
-                                "id": h["id"],
-                                "title": h["title"],
-                                "similarity": h["similarity"],
-                            }
-                            for h in hits
-                        ],
-                    }
-                )
-                blocks = [
-                    format_context_block(h["id"], h["title"], h["text"])
-                    for h in hits
+            if request.mode == "agent":
+                # Phase 11: the agent decides which tools to call, looping until
+                # it can answer. Surface each tool call/result; the final answer
+                # arrives as `answer` events which we stream as chunks.
+                for event in tools.run_tool_loop(
+                    window, build_agent_system_prompt()
+                ):
+                    if event["type"] == "answer":
+                        reply += event["content"]
+                        yield _sse({"type": "chunk", "content": event["content"]})
+                    else:
+                        yield _sse(event)
+            else:
+                messages = [
+                    Message(role=m["role"], content=m["content"]) for m in window
                 ]
-                system_prompt = build_rag_system_prompt(blocks)
+                system_prompt = None
+                if request.mode == "rag":
+                    hits = run_search(request.content, 4, "hybrid")
+                    yield _sse(
+                        {
+                            "type": "sources",
+                            "sources": [
+                                {
+                                    "id": h["id"],
+                                    "title": h["title"],
+                                    "similarity": h["similarity"],
+                                }
+                                for h in hits
+                            ],
+                        }
+                    )
+                    blocks = [
+                        format_context_block(h["id"], h["title"], h["text"])
+                        for h in hits
+                    ]
+                    system_prompt = build_rag_system_prompt(blocks)
 
-            for piece in stream_chat(messages, system_prompt):
-                reply += piece
-                yield _sse({"type": "chunk", "content": piece})
+                for piece in stream_chat(messages, system_prompt):
+                    reply += piece
+                    yield _sse({"type": "chunk", "content": piece})
 
             # Persist the assistant's reply now that it's complete.
             if reply:

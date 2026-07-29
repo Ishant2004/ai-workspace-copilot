@@ -190,6 +190,9 @@ interface StreamHandlers {
   onError: (message: string) => void;
   // Only RAG emits this: the documents the answer is grounded in.
   onSources?: (sources: SearchHit[]) => void;
+  // Only tool calling emits these (Phase 10).
+  onToolCall?: (name: string, args: Record<string, unknown>) => void;
+  onToolResult?: (name: string, result: string) => void;
 }
 
 // Shared SSE reader used by both plain chat and RAG chat. It POSTs the body,
@@ -232,6 +235,10 @@ async function streamSse(
       if (payload.type === "chunk") handlers.onChunk(payload.content);
       else if (payload.type === "sources")
         handlers.onSources?.(payload.sources);
+      else if (payload.type === "tool_call")
+        handlers.onToolCall?.(payload.name, payload.args);
+      else if (payload.type === "tool_result")
+        handlers.onToolResult?.(payload.name, payload.result);
       else if (payload.type === "done") handlers.onDone();
       else if (payload.type === "error") handlers.onError(payload.content);
     }
@@ -290,13 +297,17 @@ export async function deleteThread(id: number): Promise<void> {
   if (!r.ok) throw new Error(await errorText(r, "Delete thread"));
 }
 
+export type ChatMode = "chat" | "rag" | "agent";
+
 // Send one new message to a thread. The backend loads history itself and
-// persists both the question and the streamed answer.
+// persists both the question and the streamed answer. `mode` selects plain
+// chat, RAG grounding, or the tool-using agent.
 export function streamThreadChat(
   threadId: number,
   content: string,
-  rag: boolean,
+  mode: ChatMode,
   handlers: StreamHandlers
 ): Promise<void> {
-  return streamSse(`/api/threads/${threadId}/chat`, { content, rag }, handlers);
+  return streamSse(`/api/threads/${threadId}/chat`, { content, mode }, handlers);
 }
+

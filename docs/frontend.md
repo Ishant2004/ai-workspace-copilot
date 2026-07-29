@@ -109,13 +109,19 @@ The Chat tab is a two-pane layout: a **sidebar** listing conversations (with
 - Sending posts only the new message to `POST /api/threads/{id}/chat`
   (`streamThreadChat`); a thread is created lazily on the first send. When the
   stream finishes, the sidebar refreshes to pick up the auto-title.
-- The **"Ground answers in my documents (RAG)"** checkbox sets the `rag` flag on
-  that request; RAG answers additionally receive a `sources` event, rendered as
-  a small "Sources:" chip strip under the bubble.
+- A **Chat / RAG / Agent** mode selector sets the `mode` on the request:
+  - *RAG* answers additionally receive a `sources` event → "Sources:" chip strip.
+  - *Agent* (Phase 11) answers receive `tool_call` / `tool_result` events,
+    rendered as amber **step cards** above the final answer, so you can see the
+    agent search, calculate, etc. before it responds.
 
 All streaming shares one SSE reader (`streamSse` in `api.ts`) with an optional
 `onSources` handler. Messages are stored as `DisplayMessage` (a `Message` plus
 an optional `sources` array).
+
+> Note: the agent (Phase 11) reuses the SSE reader's optional `onToolCall` /
+> `onToolResult` handlers. The standalone Tools tab from Phase 10 was folded
+> into the chat's Agent mode and removed.
 
 ## The `/api` proxy
 

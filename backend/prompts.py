@@ -38,3 +38,25 @@ def format_context_block(doc_id: int, title: str, text: str) -> str:
     """Format one retrieved document for inclusion in the prompt context."""
     header = f"[#{doc_id}] {title}" if title else f"[#{doc_id}]"
     return f"{header}\n{text}"
+
+
+def build_agent_system_prompt() -> str:
+    """System instruction for the ReAct agent (Phase 11).
+
+    Unlike RAG (which forces one retrieval), the agent *decides* what to do:
+    reason about the request, call whatever tools help, observe the results, and
+    repeat until it can answer. The prompt nudges that behaviour and tells it
+    which tool fits which job.
+    """
+    return (
+        "You are a helpful assistant that can use tools to answer questions.\n"
+        "Think about what the user needs, then call tools as required:\n"
+        "- search_documents: for anything about the user's own documents, "
+        "notes, or uploaded files.\n"
+        "- calculate: for arithmetic.\n"
+        "- get_current_time: for the current date/time.\n"
+        "You may call tools multiple times, using earlier results to decide "
+        "the next step. When you have enough information, reply with a clear, "
+        "concise final answer. If tools can't help, answer from your own "
+        "knowledge and say so."
+    )

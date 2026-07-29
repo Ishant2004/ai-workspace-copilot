@@ -15,6 +15,7 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `api/documents.py` | Document CRUD + `POST /search` (Phase 3). |
 | `api/rag.py` | `POST /rag/chat` — grounded, cited streaming chat (Phase 4). |
 | `api/threads.py` | Conversation CRUD + persisted streaming chat (Phase 9). |
+| `api/tools.py` | `GET /tools`, `POST /tools/chat` — standalone function-call demo (Phase 10). |
 | `api/upload.py` | `POST /upload` — PDF ingestion pipeline (Phase 5). |
 | `prompts.py` | Prompt templates (the RAG grounding system prompt). |
 | `services/gemini.py` | Gemini SDK: chat, tokens, single + batch embeddings. |
@@ -22,6 +23,7 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `services/search.py` | Search strategies: vector / keyword / hybrid (RRF). |
 | `services/rerank.py` | Cross-encoder reranking with FlashRank (Phase 8). |
 | `services/threads.py` | Conversation persistence: threads/messages, sliding window. |
+| `services/tools.py` | Tool registry + the tool-call loop (backs the agent, Phases 10–11). |
 | `services/pdf.py` | Extract text from PDF bytes, per page (pypdf). |
 | `services/chunking.py` | Recursive boundary-aware chunking with overlap. |
 
@@ -128,16 +130,26 @@ Response:
 ### `GET /documents/count`
 Returns `{ "total_documents": N }`. Used by the UI badge.
 
+### Tool calling (Phase 10)
+- `GET /tools` → `{ tools: [{name, description}] }` for the UI.
+- `POST /tools/chat` — body `{ message }`. Runs the tool-call loop and streams
+  SSE events: `tool_call` `{name, args}`, `tool_result` `{name, result}`,
+  `chunk` (final answer), `done`, `error`. Tools: `calculate`,
+  `get_current_time`, `search_documents`.
+
 ### Conversation threads (Phase 9)
 - `POST /threads` → create a conversation `{ id, title, message_count }`.
 - `GET /threads` → list conversations (most recently active first).
 - `GET /threads/{id}/messages` → full history `[{role, content}]`.
 - `DELETE /threads/{id}` → delete (messages cascade).
-- `POST /threads/{id}/chat` — body `{ content, rag }`. Persists the user
-  message, replays the last `history_window` messages to the model, streams the
-  reply (SSE, same events as `/chat`, plus a `sources` event when `rag`), then
-  persists the assistant reply. New threads are auto-titled from the first
-  message.
+- `POST /threads/{id}/chat` — body `{ content, mode }` where `mode` is
+  `chat` | `rag` | `agent`. Persists the user message, replays the last
+  `history_window` messages, then:
+  - `chat`: plain streamed reply;
+  - `rag`: retrieves docs, emits a `sources` event, grounds the answer;
+  - `agent` (Phase 11): runs the tool loop, emitting `tool_call` / `tool_result`
+    events before the streamed answer.
+  The assistant reply is persisted; new threads are auto-titled.
 
 > Requires `DATABASE_URL` (a Neon Postgres URL). The table + `vector` extension
 > are created automatically on startup. Embedding dimension must match

@@ -5,25 +5,28 @@ import {
   createThread,
   getThreadMessages,
   deleteThread,
+  type ChatMode,
   type Message,
   type SearchHit,
   type Thread,
 } from "../services/api";
 
-// A chat message plus, for RAG answers, the documents it was grounded in.
-type DisplayMessage = Message & { sources?: SearchHit[] };
+// One agent tool step (Phase 11): a tool call and, once run, its result.
+type Step = { name: string; args: Record<string, unknown>; result?: string };
 
-// Phase 0: streaming chat. Phase 4: optional RAG grounding.
-// Phase 9: conversations are now persistent "threads" stored in Postgres. The
-// backend remembers history, so we only send each new message; a sidebar lists
-// past conversations and lets you switch between them.
+// A chat message plus, for RAG answers, the grounding docs and, for agent
+// answers, the tool steps taken to reach it.
+type DisplayMessage = Message & { sources?: SearchHit[]; steps?: Step[] };
+
+// Phase 0: streaming chat. Phase 4: RAG grounding. Phase 9: persistent threads.
+// Phase 11: an "Agent" mode that lets the model call tools mid-conversation.
 export default function Chat() {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [useRag, setUseRag] = useState(false);
+  const [mode, setMode] = useState<ChatMode>("chat");
   const [dbError, setDbError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -66,7 +69,6 @@ export default function Chat() {
     if (!text || busy) return;
     setBusy(true);
 
-    // Ensure we have a thread to write to (create one lazily on first send).
     let threadId = activeId;
     if (threadId == null) {
       const t = await createThread();
@@ -74,11 +76,10 @@ export default function Chat() {
       setActiveId(t.id);
     }
 
-    // Optimistically show the user message + an empty assistant bubble.
     setMessages((prev) => [
       ...prev,
       { role: "user", content: text },
-      { role: "assistant", content: "" },
+      { role: "assistant", content: "", steps: [] },
     ]);
     setInput("");
 
@@ -90,13 +91,30 @@ export default function Chat() {
       });
     };
 
-    await streamThreadChat(threadId, text, useRag, {
+    await streamThreadChat(threadId, text, mode, {
       onChunk: (extra) =>
         updateAssistant((m) => ({ ...m, content: m.content + extra })),
       onSources: (sources) => updateAssistant((m) => ({ ...m, sources })),
+      onToolCall: (name, args) =>
+        updateAssistant((m) => ({
+          ...m,
+          steps: [...(m.steps ?? []), { name, args }],
+        })),
+      onToolResult: (name, result) =>
+        updateAssistant((m) => {
+          // Attach the result to the most recent matching, unresolved call.
+          const steps = [...(m.steps ?? [])];
+          for (let i = steps.length - 1; i >= 0; i--) {
+            if (steps[i].name === name && steps[i].result === undefined) {
+              steps[i] = { ...steps[i], result };
+              break;
+            }
+          }
+          return { ...m, steps };
+        }),
       onDone: () => {
         setBusy(false);
-        refreshThreads(); // pick up the auto-title / message count
+        refreshThreads();
       },
       onError: (msg) => {
         updateAssistant((m) => ({
@@ -115,6 +133,13 @@ export default function Chat() {
     }
   }
 
+  const placeholder =
+    mode === "rag"
+      ? "Ask about your stored documents."
+      : mode === "agent"
+        ? "Ask something — the agent can search docs, do math, tell the time."
+        : "Ask me anything to get started.";
+
   return (
     <div className="flex h-full">
       {/* Sidebar: conversation list */}
@@ -128,9 +153,7 @@ export default function Chat() {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-2 pb-2">
-          {dbError && (
-            <p className="px-2 text-xs text-amber-700">{dbError}</p>
-          )}
+          {dbError && <p className="px-2 text-xs text-amber-700">{dbError}</p>}
           {threads.map((t) => (
             <div
               key={t.id}
@@ -164,27 +187,27 @@ export default function Chat() {
       <div className="flex min-w-0 flex-1 flex-col">
         <main className="mx-auto w-full max-w-2xl flex-1 space-y-4 overflow-y-auto p-4">
           {messages.length === 0 && (
-            <p className="mt-20 text-center text-neutral-400">
-              {useRag
-                ? "Ask about your stored documents."
-                : "Ask me anything to get started."}
-            </p>
+            <p className="mt-20 text-center text-neutral-400">{placeholder}</p>
           )}
           {messages.map((m, i) => (
             <div
               key={i}
               className={m.role === "user" ? "text-right" : "text-left"}
             >
-              <div
-                className={
-                  "inline-block max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm " +
-                  (m.role === "user"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-neutral-900 shadow-sm ring-1 ring-neutral-200")
-                }
-              >
-                {m.content || (busy ? "…" : "")}
-              </div>
+              {/* Agent tool steps appear above the answer. */}
+              {m.steps && m.steps.length > 0 && <Steps steps={m.steps} />}
+              {(m.content || m.role === "user" || busy) && (
+                <div
+                  className={
+                    "inline-block max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm " +
+                    (m.role === "user"
+                      ? "bg-blue-600 text-white"
+                      : "bg-white text-neutral-900 shadow-sm ring-1 ring-neutral-200")
+                  }
+                >
+                  {m.content || (busy ? "…" : "")}
+                </div>
+              )}
               {m.sources && m.sources.length > 0 && (
                 <Sources hits={m.sources} />
               )}
@@ -195,14 +218,23 @@ export default function Chat() {
 
         <footer className="border-t border-neutral-200 bg-white p-4">
           <div className="mx-auto w-full max-w-2xl space-y-2">
-            <label className="flex items-center gap-2 text-xs text-neutral-500">
-              <input
-                type="checkbox"
-                checked={useRag}
-                onChange={(e) => setUseRag(e.target.checked)}
-              />
-              Ground answers in my documents (RAG)
-            </label>
+            {/* Mode selector: plain chat, RAG grounding, or tool-using agent. */}
+            <div className="flex gap-1 rounded-lg bg-neutral-100 p-1 text-xs">
+              {(["chat", "rag", "agent"] as ChatMode[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setMode(m)}
+                  className={
+                    "rounded-md px-3 py-1 font-medium capitalize transition " +
+                    (mode === m
+                      ? "bg-white text-neutral-900 shadow-sm"
+                      : "text-neutral-500 hover:text-neutral-800")
+                  }
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
             <div className="flex gap-2">
               <textarea
                 className="flex-1 resize-none rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
@@ -227,8 +259,32 @@ export default function Chat() {
   );
 }
 
-// The little "Sources" strip under a RAG answer, so the user can see exactly
-// which documents grounded it.
+// Agent tool steps: each call + its result, shown as a compact timeline above
+// the final answer (Phase 11).
+function Steps({ steps }: { steps: Step[] }) {
+  return (
+    <div className="mb-1 space-y-1">
+      {steps.map((s, i) => (
+        <div
+          key={i}
+          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs"
+        >
+          <span className="font-medium text-amber-800">🔧 {s.name}</span>
+          <span className="font-mono text-amber-900">
+            ({JSON.stringify(s.args)})
+          </span>
+          {s.result !== undefined && (
+            <div className="mt-0.5 line-clamp-2 font-mono text-neutral-500">
+              → {s.result}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// The little "Sources" strip under a RAG answer.
 function Sources({ hits }: { hits: SearchHit[] }) {
   return (
     <div className="mt-1 flex flex-wrap gap-1">
