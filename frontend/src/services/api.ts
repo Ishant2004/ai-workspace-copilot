@@ -323,6 +323,21 @@ export async function deleteThread(id: number): Promise<void> {
   if (!r.ok) throw new Error(await errorText(r, "Delete thread"));
 }
 
+// --- Phase 13: long-term user profile memory ---
+
+// Durable facts the assistant has learned about the user, shown across all
+// conversations.
+export async function getProfile(): Promise<string[]> {
+  const r = await fetch("/api/profile");
+  if (!r.ok) throw new Error(await errorText(r, "Profile"));
+  return (await r.json()).facts;
+}
+
+export async function clearProfile(): Promise<void> {
+  const r = await fetch("/api/profile", { method: "DELETE" });
+  if (!r.ok) throw new Error(await errorText(r, "Clear profile"));
+}
+
 export type ChatMode = "chat" | "rag" | "agent" | "plan";
 
 // Send one new message to a thread. The backend loads history itself and

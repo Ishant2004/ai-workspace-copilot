@@ -16,6 +16,7 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `api/rag.py` | `POST /rag/chat` — grounded, cited streaming chat (Phase 4). |
 | `api/threads.py` | Conversation CRUD + persisted streaming chat (Phase 9). |
 | `api/tools.py` | `GET /tools`, `POST /tools/chat` — standalone function-call demo (Phase 10). |
+| `api/profile.py` | `GET /profile`, `DELETE /profile` — long-term user memory (Phase 13). |
 | `api/upload.py` | `POST /upload` — PDF ingestion pipeline (Phase 5). |
 | `prompts.py` | Prompt templates (the RAG grounding system prompt). |
 | `services/gemini.py` | Gemini SDK: chat, tokens, single + batch embeddings. |
@@ -25,6 +26,7 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `services/threads.py` | Conversation persistence: threads/messages, sliding window. |
 | `services/tools.py` | Tool registry + the tool-call loop (backs the agent, Phases 10–11). |
 | `services/planner.py` | Plan-and-execute agent: plan → execute (retries) → synthesize (Phase 12). |
+| `services/profile.py` | Long-term user memory: extract facts + system-prompt preamble (Phase 13). |
 | `services/pdf.py` | Extract text from PDF bytes, per page (pypdf). |
 | `services/chunking.py` | Recursive boundary-aware chunking with overlap. |
 
@@ -137,6 +139,13 @@ Returns `{ "total_documents": N }`. Used by the UI badge.
   SSE events: `tool_call` `{name, args}`, `tool_result` `{name, result}`,
   `chunk` (final answer), `done`, `error`. Tools: `calculate`,
   `get_current_time`, `search_documents`.
+
+### User profile (Phase 13)
+- `GET /profile` → `{ "facts": ["Name is Rajat", ...] }`.
+- `DELETE /profile` → clears all facts.
+Facts are extracted in the background after each user turn and injected into the
+system prompt on every turn (chat/RAG/agent). A hard `gemini_request_timeout`
+(config, default 60s) caps every model call.
 
 ### Conversation threads (Phase 9)
 - `POST /threads` → create a conversation `{ id, title, message_count }`.

@@ -1,0 +1,127 @@
+"""Long-term user profile memory (Phase 13).
+
+Phase 9's memory is *per conversation* (a thread's messages). This is memory
+*across* conversations: durable facts about the user — their name, role,
+preferences — that should persist no matter which thread they're in.
+
+How it works:
+  - After each user turn, a background task asks the LLM to extract any durable
+    facts worth remembering (ignoring one-off questions) and stores the new ones
+    in a `user_facts` table.
+  - Every new turn injects those facts into the system prompt (`preamble`), so
+    the assistant "remembers" the user everywhere.
+
+This is a single-user app (no auth), so there's one implicit profile.
+"""
+
+import json
+import logging
+import threading
+
+from google.genai import types
+
+from services import gemini
+from services.db import get_conn
+
+logger = logging.getLogger("uvicorn.error")
+
+# Extraction returns a JSON array of short fact strings.
+_FACTS_SCHEMA = types.Schema(
+    type=types.Type.ARRAY, items=types.Schema(type=types.Type.STRING)
+)
+
+_EXTRACT_PROMPT = (
+    "From the user's message below, extract durable facts about the USER that "
+    "are worth remembering long-term across conversations — e.g. their name, "
+    "role, team, preferences, tools they use, ongoing projects. Ignore one-off "
+    "questions, requests, and anything transient. Return a JSON array of short, "
+    "self-contained fact strings (e.g. \"Prefers Python\", \"Works in "
+    "marketing\"). Return an empty array if there's nothing worth saving.\n\n"
+    "USER MESSAGE:\n"
+)
+
+
+def init_profile() -> None:
+    """Create the user_facts table if it doesn't exist."""
+    with get_conn(register=False) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_facts (
+                id         BIGSERIAL PRIMARY KEY,
+                fact       TEXT NOT NULL UNIQUE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            );
+            """
+        )
+
+
+def get_facts() -> list[str]:
+    with get_conn(register=False) as conn:
+        rows = conn.execute(
+            "SELECT fact FROM user_facts ORDER BY id;"
+        ).fetchall()
+    return [r[0] for r in rows]
+
+
+def add_facts(facts: list[str]) -> None:
+    """Insert new facts, ignoring exact duplicates (fact is UNIQUE)."""
+    clean = [f.strip() for f in facts if f and f.strip()]
+    if not clean:
+        return
+    with get_conn(register=False) as conn:
+        with conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO user_facts (fact) VALUES (%s) "
+                "ON CONFLICT (fact) DO NOTHING;",
+                [(f,) for f in clean],
+            )
+
+
+def clear_facts() -> None:
+    with get_conn(register=False) as conn:
+        conn.execute("TRUNCATE user_facts RESTART IDENTITY;")
+
+
+def preamble() -> str:
+    """A system-prompt block describing the user, or '' if we know nothing."""
+    facts = get_facts()
+    if not facts:
+        return ""
+    lines = "\n".join(f"- {f}" for f in facts)
+    return f"What you know about the user:\n{lines}\n\n"
+
+
+def _extract(user_message: str) -> None:
+    """Extract durable facts from a message and store them (runs in a thread).
+
+    Best-effort: retries a couple of times for transient model errors (the free
+    tier occasionally returns 503/504), and never raises into the caller.
+    """
+    for attempt in range(3):
+        try:
+            response = gemini.generate(
+                [
+                    types.Content(
+                        role="user",
+                        parts=[types.Part(text=_EXTRACT_PROMPT + user_message)],
+                    )
+                ],
+                types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=_FACTS_SCHEMA,
+                ),
+            )
+            facts = json.loads(response.text or "[]")
+            if isinstance(facts, list):
+                add_facts([str(f) for f in facts])
+            return
+        except Exception as exc:  # never let memory extraction break the chat
+            if attempt == 2:
+                logger.warning("Profile extraction failed: %s", exc)
+
+
+def extract_in_background(user_message: str) -> None:
+    """Fire-and-forget fact extraction so it never delays the chat response."""
+    threading.Thread(
+        target=_extract, args=(user_message,), daemon=True
+    ).start()

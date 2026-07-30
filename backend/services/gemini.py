@@ -17,8 +17,15 @@ from config import settings
 from models import Message
 
 # One client for the whole process. It is cheap to keep around and reuses the
-# underlying HTTP connection.
-_client = genai.Client(api_key=settings.gemini_api_key)
+# underlying HTTP connection. A hard request timeout (in ms) means a hung or
+# very slow model call fails instead of blocking forever — our endpoints turn
+# that failure into an SSE `error` event. Pairs with the client-side Stop.
+_client = genai.Client(
+    api_key=settings.gemini_api_key,
+    http_options=types.HttpOptions(
+        timeout=settings.gemini_request_timeout * 1000
+    ),
+)
 
 
 def _to_gemini_contents(messages: list[Message]) -> list[types.Content]:

@@ -5,6 +5,8 @@ import {
   createThread,
   getThreadMessages,
   deleteThread,
+  getProfile,
+  clearProfile,
   type ChatMode,
   type Message,
   type SearchHit,
@@ -35,6 +37,7 @@ export default function Chat() {
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<ChatMode>("chat");
   const [dbError, setDbError] = useState<string | null>(null);
+  const [facts, setFacts] = useState<string[]>([]); // Phase 13 profile memory
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Lets us cancel an in-flight (possibly hanging) request.
@@ -62,8 +65,22 @@ export default function Chat() {
     }
   }
 
+  async function refreshProfile() {
+    try {
+      setFacts(await getProfile());
+    } catch {
+      /* profile is best-effort; ignore errors */
+    }
+  }
+
+  async function onForgetProfile() {
+    await clearProfile();
+    setFacts([]);
+  }
+
   useEffect(() => {
     refreshThreads();
+    refreshProfile();
   }, []);
 
   async function openThread(id: number) {
@@ -201,6 +218,9 @@ export default function Chat() {
       setBusy(false);
       abortRef.current = null;
       refreshThreads();
+      // Fact extraction runs in the background on the server, so re-fetch the
+      // profile shortly after to pick up anything new it learned this turn.
+      setTimeout(refreshProfile, 1500);
     }
   }
 
@@ -266,6 +286,35 @@ export default function Chat() {
             </div>
           ))}
         </div>
+
+        {/* Phase 13: what the assistant durably remembers about you, shown
+            across all conversations. */}
+        {facts.length > 0 && (
+          <div className="border-t border-neutral-200 p-2">
+            <div className="mb-1 flex items-center justify-between px-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                Memory
+              </span>
+              <button
+                onClick={onForgetProfile}
+                className="text-xs text-neutral-400 hover:text-red-600"
+                title="Forget everything about me"
+              >
+                Forget
+              </button>
+            </div>
+            <ul className="space-y-1">
+              {facts.map((f, i) => (
+                <li
+                  key={i}
+                  className="rounded bg-neutral-50 px-2 py-1 text-xs text-neutral-600"
+                >
+                  {f}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </aside>
 
       {/* Conversation */}

@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.5-flash-lite"
     cors_origins: str = "http://localhost:5173"
+    # Hard timeout (seconds) for any Gemini request, so a hung call fails fast.
+    gemini_request_timeout: int = 60
 
     # --- Token inspector settings (Phase 1) ---
     # How many tokens the model can hold in one request. Gemini Flash models

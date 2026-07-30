@@ -34,7 +34,7 @@ from prompts import (
     build_rag_system_prompt,
     format_context_block,
 )
-from services import planner, threads, tools
+from services import planner, profile, threads, tools
 from services.gemini import stream_chat
 from services.search import run_search
 
@@ -89,6 +89,9 @@ def thread_chat(thread_id: int, request: ThreadChatRequest) -> StreamingResponse
             window = threads.get_recent_messages(
                 thread_id, settings.history_window
             )
+            # Phase 13: what we durably know about the user, injected into the
+            # system prompt so the assistant remembers across conversations.
+            user_profile = profile.preamble()
 
             if request.mode == "plan":
                 # Phase 12: plan-and-execute. Emit the plan and each step's
@@ -104,7 +107,7 @@ def thread_chat(thread_id: int, request: ThreadChatRequest) -> StreamingResponse
                 # it can answer. Surface each tool call/result; the final answer
                 # arrives as `answer` events which we stream as chunks.
                 for event in tools.run_tool_loop(
-                    window, build_agent_system_prompt()
+                    window, user_profile + build_agent_system_prompt()
                 ):
                     if event["type"] == "answer":
                         reply += event["content"]
@@ -115,7 +118,7 @@ def thread_chat(thread_id: int, request: ThreadChatRequest) -> StreamingResponse
                 messages = [
                     Message(role=m["role"], content=m["content"]) for m in window
                 ]
-                system_prompt = None
+                system_prompt = user_profile or None
                 if request.mode == "rag":
                     hits = run_search(request.content, 4, "hybrid")
                     yield _sse(
@@ -135,7 +138,7 @@ def thread_chat(thread_id: int, request: ThreadChatRequest) -> StreamingResponse
                         format_context_block(h["id"], h["title"], h["text"])
                         for h in hits
                     ]
-                    system_prompt = build_rag_system_prompt(blocks)
+                    system_prompt = user_profile + build_rag_system_prompt(blocks)
 
                 for piece in stream_chat(messages, system_prompt):
                     reply += piece
@@ -144,6 +147,9 @@ def thread_chat(thread_id: int, request: ThreadChatRequest) -> StreamingResponse
             # Persist the assistant's reply now that it's complete.
             if reply:
                 threads.add_message(thread_id, "assistant", reply)
+                # Phase 13: learn durable facts from this turn, in the
+                # background so it never delays the response.
+                profile.extract_in_background(request.content)
             yield _sse({"type": "done"})
         except Exception as exc:
             yield _sse({"type": "error", "content": str(exc)})

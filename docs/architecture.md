@@ -41,6 +41,7 @@ Browser (React)  ──HTTP/SSE──►  FastAPI backend  ──►  Gemini LLM
 | 10 | Tool calling (function calling) | ✅ Done |
 | 11 | ReAct agent (in chat) | ✅ Done |
 | 12 | Planning & task execution | ✅ Done |
+| 13 | Long-term user profile memory | ✅ Done |
 
 ## Current data flow (Phase 0)
 
@@ -392,6 +393,32 @@ step 2 `calculate("30 * 8 * 12")` = 2880 → answer "$2,880 annual for a team of
 > Reactive (Phase 11) vs. plan-first (Phase 12) are complementary: reactive is
 > lighter for simple asks; planning shines when a request has clear sequential
 > parts. Both reuse the same tools.
+
+## Phase 13: long-term user profile memory
+
+Phase 9 gives *per-conversation* memory (a thread's messages). Phase 13 adds
+memory that spans *every* conversation: durable facts about the user — name,
+role, preferences — kept in a `user_facts` table (`services/profile.py`).
+
+- **Learn** — after each user turn, a fire-and-forget background thread asks the
+  model to extract durable facts (ignoring one-off questions) as JSON and stores
+  the new ones (`fact` is UNIQUE, so duplicates are ignored). It's best-effort
+  with retries and never blocks or breaks the chat.
+- **Remember** — every new turn injects those facts as a `preamble()` at the top
+  of the system prompt (for chat / RAG / agent modes), so the assistant knows
+  the user in any thread.
+
+`GET /profile` lists the facts; `DELETE /profile` forgets them. The Chat sidebar
+shows a **Memory** panel of the current facts with a **Forget** button.
+
+Verified: telling the assistant "I'm Rajat, a backend engineer who prefers
+Python…" stored four facts, and a brand-new conversation answered "What's my
+name?" with "Your name is Rajat, and you prefer Python" — recall across threads.
+The Memory panel renders the facts and Forget clears them.
+
+> Server-side robustness added alongside this phase: a hard `gemini_request_timeout`
+> (default 60s) on the Gemini client so a hung call fails fast instead of
+> blocking forever — the complement to the client-side Stop button.
 
 ## Why streaming (SSE)?
 

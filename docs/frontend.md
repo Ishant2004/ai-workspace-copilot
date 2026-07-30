@@ -128,6 +128,13 @@ an optional `sources` array).
 > `onToolResult` handlers. The standalone Tools tab from Phase 10 was folded
 > into the chat's Agent mode and removed.
 
+## Memory panel (Phase 13)
+
+The chat sidebar shows a **Memory** panel: the durable facts the assistant has
+learned about the user (`GET /api/profile`), with a **Forget** button
+(`DELETE /api/profile`). It refreshes on load and ~1.5s after each turn (fact
+extraction runs in the background server-side, so we re-fetch shortly after).
+
 ## Stopping a response
 
 The input's **Send** button becomes a red **Stop** while a response is
