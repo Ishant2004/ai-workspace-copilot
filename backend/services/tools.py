@@ -73,9 +73,9 @@ def calculate(expression: str) -> str:
         return f"Could not evaluate expression: {expression!r}"
 
 
-def search_documents(query: str) -> str:
-    """Search the stored knowledge base and return the top matching chunks."""
-    hits = run_search(query, 3, "hybrid")
+def search_documents(user_id: int, query: str) -> str:
+    """Search the user's knowledge base and return the top matching chunks."""
+    hits = run_search(user_id, query, 3, "hybrid")
     if not hits:
         return "No matching documents found."
     return "\n\n".join(
@@ -124,10 +124,10 @@ _DECLARATIONS = [
     ),
 ]
 
+# Tools that don't need a user context.
 _FUNCTIONS = {
     "get_current_time": get_current_time,
     "calculate": calculate,
-    "search_documents": search_documents,
 }
 
 
@@ -136,14 +136,21 @@ def declarations() -> list[dict]:
     return [{"name": d.name, "description": d.description} for d in _DECLARATIONS]
 
 
-def dispatch(name: str, args: dict) -> str:
-    # Local tool first; otherwise route to an external MCP tool (Phase 15).
+def dispatch(name: str, args: dict, user_id: int) -> str:
+    # search_documents is scoped to the calling user.
+    if name == "search_documents":
+        try:
+            return search_documents(user_id, **args)
+        except Exception as exc:
+            return f"Tool {name} failed: {exc}"
+    # Other local tools need no user context.
     fn = _FUNCTIONS.get(name)
     if fn is not None:
         try:
             return str(fn(**args))
         except Exception as exc:
             return f"Tool {name} failed: {exc}"
+    # Otherwise route to an external MCP tool (Phase 15).
     return mcp_client.call_tool(name, args)
 
 
@@ -210,15 +217,17 @@ def all_declarations() -> list[types.FunctionDeclaration]:
 
 
 def run_tool_loop(
-    messages: list[dict], system_instruction: str | None = None
+    user_id: int,
+    messages: list[dict],
+    system_instruction: str | None = None,
 ) -> Iterator[dict]:
     """Drive the model through tool calls over a conversation, yielding events
     as they happen: {type: tool_call|tool_result|answer}.
 
-    `messages` is the conversation so far ({role, content}); the model sees it
-    all, so the agent has context. This is the ReAct loop of Phase 11 — reason,
-    act (call a tool), observe (its result), repeat — and also backs the simple
-    single-message tool demo.
+    `user_id` scopes any document search the agent performs. `messages` is the
+    conversation so far ({role, content}); the model sees it all, so the agent
+    has context. This is the ReAct loop of Phase 11 — reason, act (call a tool),
+    observe (its result), repeat.
     """
     contents = [
         types.Content(
@@ -249,7 +258,7 @@ def run_tool_loop(
         for call in calls:
             args = dict(call.args or {})
             yield {"type": "tool_call", "name": call.name, "args": args}
-            result = dispatch(call.name, args)
+            result = dispatch(call.name, args, user_id)
             yield {"type": "tool_result", "name": call.name, "result": result}
             result_parts.append(
                 types.Part.from_function_response(

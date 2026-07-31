@@ -15,9 +15,10 @@ exactly what the answer was based on.
 import json
 from collections.abc import Iterator
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+from api.deps import current_user_id
 from models import Message, RagChatRequest
 from prompts import build_rag_system_prompt, format_context_block
 from services import db
@@ -38,12 +39,14 @@ def _last_user_message(messages: list[Message]) -> str:
 
 
 @router.post("/rag/chat")
-def rag_chat(request: RagChatRequest) -> StreamingResponse:
+def rag_chat(
+    request: RagChatRequest, user_id: int = Depends(current_user_id)
+) -> StreamingResponse:
     def event_stream() -> Iterator[str]:
         try:
             # 1. Retrieve: embed the latest question and find similar documents.
             query = _last_user_message(request.messages)
-            hits = db.search(embed_text(query), request.k) if query else []
+            hits = db.search(user_id, embed_text(query), request.k) if query else []
 
             # 2. Tell the UI which documents we're grounding on, up front.
             yield _sse(

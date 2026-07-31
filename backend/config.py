@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     # Hard timeout (seconds) for any Gemini request, so a hung call fails fast.
     gemini_request_timeout: int = 60
 
+    # --- Auth (per-user segregation) ---
+    # Secret used to sign JWTs. MUST be overridden in production via env
+    # (JWT_SECRET). The dev default is long enough to satisfy HS256 but is not
+    # secret — anyone with the repo knows it.
+    jwt_secret: str = "dev-only-insecure-secret-please-override-in-production"
+    jwt_expire_hours: int = 720  # token lifetime (30 days)
+
     # --- Token inspector settings (Phase 1) ---
     # How many tokens the model can hold in one request. Gemini Flash models
     # have a ~1M token context window. Used to show "% of context used".

@@ -42,56 +42,70 @@ _EXTRACT_PROMPT = (
 
 
 def init_profile() -> None:
-    """Create the user_facts table if it doesn't exist."""
+    """Create the user_facts table if it doesn't exist (facts are per-user)."""
     with get_conn(register=False) as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS user_facts (
                 id         BIGSERIAL PRIMARY KEY,
-                fact       TEXT NOT NULL UNIQUE,
+                user_id    BIGINT NOT NULL,
+                fact       TEXT NOT NULL,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
             );
             """
         )
+        # Migrate tables created before multi-tenancy: add user_id, drop the old
+        # global UNIQUE(fact), and enforce uniqueness per (user_id, fact).
+        conn.execute(
+            "ALTER TABLE user_facts ADD COLUMN IF NOT EXISTS user_id BIGINT;"
+        )
+        conn.execute(
+            "ALTER TABLE user_facts DROP CONSTRAINT IF EXISTS user_facts_fact_key;"
+        )
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS user_facts_user_fact_idx "
+            "ON user_facts (user_id, fact);"
+        )
 
 
-def get_facts() -> list[str]:
+def get_facts(user_id: int) -> list[str]:
     with get_conn(register=False) as conn:
         rows = conn.execute(
-            "SELECT fact FROM user_facts ORDER BY id;"
+            "SELECT fact FROM user_facts WHERE user_id = %s ORDER BY id;",
+            (user_id,),
         ).fetchall()
     return [r[0] for r in rows]
 
 
-def add_facts(facts: list[str]) -> None:
-    """Insert new facts, ignoring exact duplicates (fact is UNIQUE)."""
+def add_facts(user_id: int, facts: list[str]) -> None:
+    """Insert new facts for the user, ignoring duplicates ((user_id,fact) UNIQUE)."""
     clean = [f.strip() for f in facts if f and f.strip()]
     if not clean:
         return
     with get_conn(register=False) as conn:
         with conn.cursor() as cur:
             cur.executemany(
-                "INSERT INTO user_facts (fact) VALUES (%s) "
-                "ON CONFLICT (fact) DO NOTHING;",
-                [(f,) for f in clean],
+                "INSERT INTO user_facts (user_id, fact) VALUES (%s, %s) "
+                "ON CONFLICT (user_id, fact) DO NOTHING;",
+                [(user_id, f) for f in clean],
             )
 
 
-def clear_facts() -> None:
+def clear_facts(user_id: int) -> None:
     with get_conn(register=False) as conn:
-        conn.execute("TRUNCATE user_facts RESTART IDENTITY;")
+        conn.execute("DELETE FROM user_facts WHERE user_id = %s;", (user_id,))
 
 
-def preamble() -> str:
+def preamble(user_id: int) -> str:
     """A system-prompt block describing the user, or '' if we know nothing."""
-    facts = get_facts()
+    facts = get_facts(user_id)
     if not facts:
         return ""
     lines = "\n".join(f"- {f}" for f in facts)
     return f"What you know about the user:\n{lines}\n\n"
 
 
-def _extract(user_message: str) -> None:
+def _extract(user_id: int, user_message: str) -> None:
     """Extract durable facts from a message and store them (runs in a thread).
 
     Best-effort: retries a couple of times for transient model errors (the free
@@ -113,15 +127,15 @@ def _extract(user_message: str) -> None:
             )
             facts = json.loads(response.text or "[]")
             if isinstance(facts, list):
-                add_facts([str(f) for f in facts])
+                add_facts(user_id, [str(f) for f in facts])
             return
         except Exception as exc:  # never let memory extraction break the chat
             if attempt == 2:
                 logger.warning("Profile extraction failed: %s", exc)
 
 
-def extract_in_background(user_message: str) -> None:
+def extract_in_background(user_id: int, user_message: str) -> None:
     """Fire-and-forget fact extraction so it never delays the chat response."""
     threading.Thread(
-        target=_extract, args=(user_message,), daemon=True
+        target=_extract, args=(user_id, user_message), daemon=True
     ).start()

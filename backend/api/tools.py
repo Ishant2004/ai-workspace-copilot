@@ -12,9 +12,10 @@ arguments and the result, and then read the grounded answer. Event types:
 import json
 from collections.abc import Iterator
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+from api.deps import current_user_id
 from models import ToolsChatRequest
 from services import mcp_client, tools
 
@@ -43,11 +44,13 @@ def list_mcp_tools(refresh: bool = False) -> dict:
 
 
 @router.post("/tools/chat")
-def tools_chat(request: ToolsChatRequest) -> StreamingResponse:
+def tools_chat(
+    request: ToolsChatRequest, user_id: int = Depends(current_user_id)
+) -> StreamingResponse:
     def event_stream() -> Iterator[str]:
         try:
             messages = [{"role": "user", "content": request.message}]
-            for event in tools.run_tool_loop(messages):
+            for event in tools.run_tool_loop(user_id, messages):
                 if event["type"] == "answer":
                     yield _sse({"type": "chunk", "content": event["content"]})
                 else:

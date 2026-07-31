@@ -524,6 +524,34 @@ UptimeRobot ping to `/health` every 10 min so Render's free instance doesn't col
 Verified locally: the backend image **builds** and a running container returns
 `{"status":"ok"}` from `/health`; the frontend production build succeeds.
 
+## Multi-tenancy: per-user auth & data isolation
+
+Once deployed publicly the app is multi-user, so data must be **segregated per
+user**. Two halves:
+
+**Identity** (`services/auth.py`, `api/auth.py`): email + password auth from
+first principles — passwords hashed with **bcrypt**, a signed **JWT** issued on
+login, and a `get_current_user` dependency (`api/deps.py`) that decodes the
+`Authorization: Bearer` header into a `user_id` on every request. Missing/expired
+token → 401. Users live in a `users` table.
+
+**Scoping**: every user-owned table (`documents`, `threads`, `user_facts`) has a
+`user_id` column. Every insert stamps it; every read/update/delete filters by it.
+`user_id` is threaded through the whole stack — search → RAG/agent/planner/team —
+so `search_documents` and memory can never leak across users.
+
+Frontend: a login/signup screen gates the app; the JWT is kept in `localStorage`
+and attached to every request (including SSE); a 401 drops back to login. On
+login the app subtree mounts fresh, so each user loads only their own data.
+
+Verified: two accounts each see only their own documents, threads, and memory;
+one user's search never returns another's docs; accessing another user's thread
+returns 404; and no token → 401.
+
+> Ops: set a strong `JWT_SECRET` in production (Render can generate one). The
+> `user_id` columns are added automatically on startup (`ADD COLUMN IF NOT
+> EXISTS`); any pre-auth global data becomes owner-less and is ignored.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

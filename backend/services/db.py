@@ -1,18 +1,14 @@
-"""Vector database access (Phase 3).
+"""Vector database access (Phase 3; user-scoped for multi-tenancy).
 
 This is our own tiny vector database built on Postgres + the `pgvector`
-extension. The idea:
-
-  - Every document is stored alongside its embedding (a vector(768) column).
-  - To "search", we embed the query and ask Postgres for the rows whose vectors
-    are closest to it, using the cosine-distance operator `<=>`.
+extension. Every document is stored with its embedding (a vector column) and,
+now, an owning `user_id` — every read/write is filtered by it so users only ever
+see their own documents.
 
 Because our embeddings are unit-normalized (see services/gemini.py), cosine
-similarity is simply `1 - cosine_distance`. A similarity of 1.0 means identical
-direction (very related); 0.0 means unrelated.
+similarity is simply `1 - cosine_distance`.
 
-We open a fresh connection per request for simplicity. That is slightly slower
-than pooling but keeps the code obvious, which matters more while learning.
+We open a fresh connection per request for simplicity.
 """
 
 from contextlib import contextmanager
@@ -43,21 +39,15 @@ def get_conn(register: bool = True) -> Iterator[psycopg.Connection]:
 
 
 def init_db() -> None:
-    """Create the vector extension and the documents table if missing.
-
-    The embedding column size is fixed to the configured embedding dimension.
-    Every document must be embedded with the same model/dimension or the
-    distances are meaningless.
-    """
+    """Create the vector extension and the documents table if missing."""
     dim = settings.gemini_embed_dim
-    # register=False: on a brand-new database the `vector` type doesn't exist
-    # yet, so we must create the extension before the adapter can be registered.
     with get_conn(register=False) as conn:
         conn.execute("CREATE EXTENSION IF NOT EXISTS vector;")
         conn.execute(
             f"""
             CREATE TABLE IF NOT EXISTS documents (
                 id        BIGSERIAL PRIMARY KEY,
+                user_id   BIGINT,
                 title     TEXT,
                 text      TEXT NOT NULL,
                 embedding vector({dim}) NOT NULL,
@@ -66,15 +56,21 @@ def init_db() -> None:
             );
             """
         )
-        # Phase 6: add metadata to tables created before this column existed.
+        # Phase 6: metadata column for older tables.
         conn.execute(
             "ALTER TABLE documents "
             "ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL "
             "DEFAULT '{}'::jsonb;"
         )
-        # Phase 7: a generated tsvector column powers keyword (full-text) search.
-        # It's kept in sync automatically from title+text, and a GIN index makes
-        # `@@` lookups fast.
+        # Multi-tenancy: owner column, indexed for fast per-user filtering.
+        conn.execute(
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS user_id BIGINT;"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS documents_user_idx "
+            "ON documents (user_id);"
+        )
+        # Phase 7: generated tsvector column + GIN index for keyword search.
         conn.execute(
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS text_search tsvector "
             "GENERATED ALWAYS AS ("
@@ -88,47 +84,42 @@ def init_db() -> None:
 
 
 def insert_document(
-    title: str, text: str, embedding: list[float], metadata: dict | None = None
+    user_id: int,
+    title: str,
+    text: str,
+    embedding: list[float],
+    metadata: dict | None = None,
 ) -> int:
-    """Store one document + its embedding + optional metadata. Returns the id."""
+    """Store one document owned by `user_id`. Returns the new id."""
     with get_conn() as conn:
         row = conn.execute(
-            "INSERT INTO documents (title, text, embedding, metadata) "
-            "VALUES (%s, %s, %s, %s) RETURNING id;",
-            (title, text, embedding, Jsonb(metadata or {})),
+            "INSERT INTO documents (user_id, title, text, embedding, metadata) "
+            "VALUES (%s, %s, %s, %s, %s) RETURNING id;",
+            (user_id, title, text, embedding, Jsonb(metadata or {})),
         ).fetchone()
         return row[0]
 
 
 def insert_documents(
-    rows: list[tuple[str, str, list[float], dict]],
+    user_id: int, rows: list[tuple[str, str, list[float], dict]]
 ) -> int:
-    """Insert many (title, text, embedding, metadata) rows in one connection.
-
-    Used by PDF ingestion, where one file becomes many chunk rows. Batching
-    the inserts over a single connection is much faster than reconnecting per
-    chunk. Returns how many rows were inserted.
-    """
+    """Insert many (title, text, embedding, metadata) rows for `user_id`."""
     if not rows:
         return 0
-    # Wrap each metadata dict so psycopg stores it as jsonb.
-    params = [(t, x, e, Jsonb(m or {})) for (t, x, e, m) in rows]
+    params = [(user_id, t, x, e, Jsonb(m or {})) for (t, x, e, m) in rows]
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.executemany(
-                "INSERT INTO documents (title, text, embedding, metadata) "
-                "VALUES (%s, %s, %s, %s);",
+                "INSERT INTO documents "
+                "(user_id, title, text, embedding, metadata) "
+                "VALUES (%s, %s, %s, %s, %s);",
                 params,
             )
     return len(rows)
 
 
-def search(query_embedding: list[float], k: int) -> list[dict]:
-    """Return the k documents most similar to the query embedding.
-
-    `<=>` is pgvector's cosine-distance operator. We order by it ascending
-    (smaller distance = more similar) and convert to a 0..1 similarity score.
-    """
+def search(user_id: int, query_embedding: list[float], k: int) -> list[dict]:
+    """Return the user's k documents most similar to the query embedding."""
     with get_conn() as conn:
         # Cast the parameter to `vector`: a plain Python list arrives as a
         # Postgres float8[] otherwise, and `<=>` is only defined on vectors.
@@ -137,10 +128,11 @@ def search(query_embedding: list[float], k: int) -> list[dict]:
             SELECT id, title, text, metadata,
                    1 - (embedding <=> %s::vector) AS similarity
             FROM documents
+            WHERE user_id = %s
             ORDER BY embedding <=> %s::vector
             LIMIT %s;
             """,
-            (query_embedding, query_embedding, k),
+            (query_embedding, user_id, query_embedding, k),
         ).fetchall()
 
     return [
@@ -155,26 +147,19 @@ def search(query_embedding: list[float], k: int) -> list[dict]:
     ]
 
 
-def keyword_search(query: str, k: int) -> list[dict]:
-    """Full-text keyword search (Phase 7).
-
-    Uses Postgres' text search: `websearch_to_tsquery` turns the user's words
-    into a query (handling quotes/AND/OR gracefully), `@@` matches it against
-    the precomputed `text_search` column, and `ts_rank` scores by term frequency
-    — the classic BM25-style keyword signal that vector search lacks (it's great
-    at exact terms, names, and codes that don't embed well).
-    """
+def keyword_search(user_id: int, query: str, k: int) -> list[dict]:
+    """Full-text keyword search over the user's documents (Phase 7)."""
     with get_conn() as conn:
         rows = conn.execute(
             """
             SELECT id, title, text, metadata,
                    ts_rank(text_search, q) AS rank
             FROM documents, websearch_to_tsquery('english', %s) AS q
-            WHERE text_search @@ q
+            WHERE user_id = %s AND text_search @@ q
             ORDER BY rank DESC
             LIMIT %s;
             """,
-            (query, k),
+            (query, user_id, k),
         ).fetchall()
     return [
         {
@@ -188,15 +173,13 @@ def keyword_search(query: str, k: int) -> list[dict]:
     ]
 
 
-def list_documents() -> list[dict]:
-    """Return every stored document (newest first), without the embedding.
-
-    We omit the 768-number embedding here — it's large and the UI never needs
-    the raw vector just to list or manage records.
-    """
+def list_documents(user_id: int) -> list[dict]:
+    """Return the user's stored documents (newest first), without embeddings."""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, title, text, metadata FROM documents ORDER BY id DESC;"
+            "SELECT id, title, text, metadata FROM documents "
+            "WHERE user_id = %s ORDER BY id DESC;",
+            (user_id,),
         ).fetchall()
     return [
         {"id": r[0], "title": r[1], "text": r[2], "metadata": r[3] or {}}
@@ -205,31 +188,30 @@ def list_documents() -> list[dict]:
 
 
 def update_document(
-    doc_id: int, title: str, text: str, embedding: list[float]
+    user_id: int, doc_id: int, title: str, text: str, embedding: list[float]
 ) -> bool:
-    """Replace a document's title/text/embedding. Returns False if id missing.
-
-    The caller re-embeds the new text before calling this, so the stored vector
-    always matches the stored text.
-    """
+    """Replace one of the user's documents. False if id missing or not theirs."""
     with get_conn() as conn:
         result = conn.execute(
             "UPDATE documents SET title = %s, text = %s, embedding = %s "
-            "WHERE id = %s;",
-            (title, text, embedding, doc_id),
+            "WHERE id = %s AND user_id = %s;",
+            (title, text, embedding, doc_id, user_id),
         )
         return result.rowcount > 0
 
 
-def delete_document(doc_id: int) -> bool:
-    """Delete one document. Returns False if the id did not exist."""
+def delete_document(user_id: int, doc_id: int) -> bool:
+    """Delete one of the user's documents. False if missing or not theirs."""
     with get_conn() as conn:
         result = conn.execute(
-            "DELETE FROM documents WHERE id = %s;", (doc_id,)
+            "DELETE FROM documents WHERE id = %s AND user_id = %s;",
+            (doc_id, user_id),
         )
         return result.rowcount > 0
 
 
-def count_documents() -> int:
+def count_documents(user_id: int) -> int:
     with get_conn() as conn:
-        return conn.execute("SELECT count(*) FROM documents;").fetchone()[0]
+        return conn.execute(
+            "SELECT count(*) FROM documents WHERE user_id = %s;", (user_id,)
+        ).fetchone()[0]

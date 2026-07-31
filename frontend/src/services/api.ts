@@ -5,6 +5,72 @@
 // history, so we read the response body stream manually and parse the
 // "data: {...}" lines ourselves.
 
+// --- Auth token (per-user segregation) ---
+// The JWT lives in localStorage and is attached to every request. A 401 means
+// the token is missing/expired, so we clear it and notify the app to show login.
+
+const TOKEN_KEY = "auth_token";
+
+export const authToken = {
+  get: () => localStorage.getItem(TOKEN_KEY),
+  set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
+  clear: () => localStorage.removeItem(TOKEN_KEY),
+};
+
+let onAuthError: () => void = () => {};
+export function setAuthErrorHandler(fn: () => void) {
+  onAuthError = fn;
+}
+
+function withAuth(headers: Record<string, string> = {}): Record<string, string> {
+  const t = authToken.get();
+  return t ? { ...headers, Authorization: `Bearer ${t}` } : headers;
+}
+
+// fetch wrapper that injects the auth header and reacts to 401 globally.
+async function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const res = await fetch(url, {
+    ...options,
+    headers: withAuth(options.headers as Record<string, string> | undefined),
+  });
+  if (res.status === 401) {
+    authToken.clear();
+    onAuthError();
+  }
+  return res;
+}
+
+// --- Auth endpoints (use plain fetch: a 401 here is "bad credentials", not a
+// session expiry, so it must NOT trigger the global logout handler). ---
+
+export async function signup(email: string, password: string): Promise<string> {
+  return authRequest("/api/auth/signup", email, password);
+}
+
+export async function login(email: string, password: string): Promise<string> {
+  return authRequest("/api/auth/login", email, password);
+}
+
+async function authRequest(
+  url: string,
+  email: string,
+  password: string
+): Promise<string> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) throw new Error(await errorText(res, "Auth"));
+  const data = await res.json();
+  authToken.set(data.token);
+  return data.token;
+}
+
+export function logout() {
+  authToken.clear();
+}
+
 export interface Message {
   role: "user" | "assistant";
   content: string;
@@ -23,7 +89,7 @@ export interface TokenStats {
 
 // Ask the backend to tokenize a piece of text and return usage metrics.
 export async function tokenize(text: string): Promise<TokenStats> {
-  const response = await fetch("/api/tokenize", {
+  const response = await apiFetch("/api/tokenize", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
@@ -42,7 +108,7 @@ export interface EmbedResult {
 
 // Ask the backend to embed a piece of text into a numeric vector.
 export async function embed(text: string): Promise<EmbedResult> {
-  const response = await fetch("/api/embed", {
+  const response = await apiFetch("/api/embed", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
@@ -90,7 +156,7 @@ export async function addDocument(
   text: string,
   title: string
 ): Promise<AddDocResult> {
-  const response = await fetch("/api/documents", {
+  const response = await apiFetch("/api/documents", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, title }),
@@ -107,7 +173,7 @@ export async function searchDocuments(
   mode: SearchMode = "hybrid",
   rerank = false
 ): Promise<SearchHit[]> {
-  const response = await fetch("/api/search", {
+  const response = await apiFetch("/api/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, k, mode, rerank }),
@@ -118,7 +184,7 @@ export async function searchDocuments(
 }
 
 export async function documentCount(): Promise<number> {
-  const response = await fetch("/api/documents/count");
+  const response = await apiFetch("/api/documents/count");
   if (!response.ok) throw new Error(await errorText(response, "Count"));
   return (await response.json()).total_documents;
 }
@@ -132,7 +198,7 @@ export interface DocumentItem {
 
 // List every stored document (no raw vectors) for the management view.
 export async function listDocuments(): Promise<DocumentItem[]> {
-  const response = await fetch("/api/documents");
+  const response = await apiFetch("/api/documents");
   if (!response.ok) throw new Error(await errorText(response, "List"));
   return response.json();
 }
@@ -143,7 +209,7 @@ export async function updateDocument(
   text: string,
   title: string
 ): Promise<void> {
-  const response = await fetch(`/api/documents/${id}`, {
+  const response = await apiFetch(`/api/documents/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, title }),
@@ -152,7 +218,7 @@ export async function updateDocument(
 }
 
 export async function deleteDocument(id: number): Promise<number> {
-  const response = await fetch(`/api/documents/${id}`, { method: "DELETE" });
+  const response = await apiFetch(`/api/documents/${id}`, { method: "DELETE" });
   if (!response.ok) throw new Error(await errorText(response, "Delete"));
   return (await response.json()).total_documents;
 }
@@ -169,7 +235,7 @@ export interface UploadResult {
 export async function uploadPdf(file: File): Promise<UploadResult> {
   const form = new FormData();
   form.append("file", file);
-  const response = await fetch("/api/upload", { method: "POST", body: form });
+  const response = await apiFetch("/api/upload", { method: "POST", body: form });
   if (!response.ok) throw new Error(await errorText(response, "Upload"));
   return response.json();
 }
@@ -218,7 +284,7 @@ async function streamSse(
   try {
     response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: withAuth({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
       signal,
     });
@@ -227,6 +293,12 @@ async function streamSse(
     throw e;
   }
 
+  if (response.status === 401) {
+    authToken.clear();
+    onAuthError();
+    handlers.onError("Session expired — please sign in again.");
+    return;
+  }
   if (!response.ok || !response.body) {
     handlers.onError(`Request failed: ${response.status}`);
     return;
@@ -304,13 +376,13 @@ export interface Thread {
 }
 
 export async function listThreads(): Promise<Thread[]> {
-  const r = await fetch("/api/threads");
+  const r = await apiFetch("/api/threads");
   if (!r.ok) throw new Error(await errorText(r, "List threads"));
   return r.json();
 }
 
 export async function createThread(): Promise<Thread> {
-  const r = await fetch("/api/threads", {
+  const r = await apiFetch("/api/threads", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
@@ -320,13 +392,13 @@ export async function createThread(): Promise<Thread> {
 }
 
 export async function getThreadMessages(id: number): Promise<Message[]> {
-  const r = await fetch(`/api/threads/${id}/messages`);
+  const r = await apiFetch(`/api/threads/${id}/messages`);
   if (!r.ok) throw new Error(await errorText(r, "Load thread"));
   return r.json();
 }
 
 export async function deleteThread(id: number): Promise<void> {
-  const r = await fetch(`/api/threads/${id}`, { method: "DELETE" });
+  const r = await apiFetch(`/api/threads/${id}`, { method: "DELETE" });
   if (!r.ok) throw new Error(await errorText(r, "Delete thread"));
 }
 
@@ -335,13 +407,13 @@ export async function deleteThread(id: number): Promise<void> {
 // Durable facts the assistant has learned about the user, shown across all
 // conversations.
 export async function getProfile(): Promise<string[]> {
-  const r = await fetch("/api/profile");
+  const r = await apiFetch("/api/profile");
   if (!r.ok) throw new Error(await errorText(r, "Profile"));
   return (await r.json()).facts;
 }
 
 export async function clearProfile(): Promise<void> {
-  const r = await fetch("/api/profile", { method: "DELETE" });
+  const r = await apiFetch("/api/profile", { method: "DELETE" });
   if (!r.ok) throw new Error(await errorText(r, "Clear profile"));
 }
 

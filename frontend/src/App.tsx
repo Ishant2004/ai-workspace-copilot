@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Chat from "./components/Chat";
 import TokenInspector from "./components/TokenInspector";
 import EmbedInspector from "./components/EmbedInspector";
 import VectorSearch from "./components/VectorSearch";
+import Auth from "./components/Auth";
+import { authToken, logout, setAuthErrorHandler } from "./services/api";
 
 type Tab = "chat" | "tokens" | "embed" | "search";
 
@@ -14,6 +16,21 @@ type Tab = "chat" | "tokens" | "embed" | "search";
 // your typed text, your search results — so we keep them alive instead.
 export default function App() {
   const [tab, setTab] = useState<Tab>("chat");
+  const [authed, setAuthed] = useState<boolean>(() => !!authToken.get());
+
+  // A 401 anywhere (expired/invalid token) drops back to the login screen.
+  useEffect(() => {
+    setAuthErrorHandler(() => setAuthed(false));
+  }, []);
+
+  function signOut() {
+    logout();
+    setAuthed(false);
+  }
+
+  // Not signed in → show the auth screen. When it succeeds the whole app
+  // subtree mounts fresh, so each tab loads the new user's own data.
+  if (!authed) return <Auth onAuthed={() => setAuthed(true)} />;
 
   return (
     <div className="flex h-screen flex-col bg-neutral-50 text-neutral-900">
@@ -45,6 +62,13 @@ export default function App() {
             >
               Vector Search
             </TabButton>
+            <button
+              onClick={signOut}
+              className="rounded-md px-3 py-1 font-medium text-neutral-500 hover:text-red-600"
+              title="Sign out"
+            >
+              Sign out
+            </button>
           </nav>
         </div>
       </header>

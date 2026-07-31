@@ -36,6 +36,9 @@ The repo ships a `render.yaml` blueprint and `backend/Dockerfile`.
    - `GEMINI_API_KEY`
    - `DATABASE_URL` (your Neon connection string)
    - `CORS_ORIGINS` (your Vercel URL, e.g. `https://your-app.vercel.app`)
+   - `JWT_SECRET` — a long random string for signing login tokens (the
+     blueprint asks Render to generate one; or run `openssl rand -hex 32`).
+     Changing it later logs everyone out.
 4. Deploy. Note the service URL, e.g. `https://ai-workspace-copilot-backend.onrender.com`.
 
 The Dockerfile listens on `$PORT` (Render injects it). Verified locally: the

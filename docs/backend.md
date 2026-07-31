@@ -18,6 +18,9 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `api/tools.py` | `GET /tools`, `POST /tools/chat` — standalone function-call demo (Phase 10). |
 | `api/profile.py` | `GET /profile`, `DELETE /profile` — long-term user memory (Phase 13). |
 | `mcp_server.py` | Standalone MCP server exposing tools over stdio (Phase 14). |
+| `api/auth.py` | `/auth/signup`, `/auth/login`, `/auth/me` — email/password + JWT. |
+| `api/deps.py` | `current_user_id` dependency (decodes the Bearer token). |
+| `services/auth.py` | bcrypt password hashing + JWT create/decode; users table. |
 | `api/upload.py` | `POST /upload` — PDF ingestion pipeline (Phase 5). |
 | `prompts.py` | Prompt templates (the RAG grounding system prompt). |
 | `services/gemini.py` | Gemini SDK: chat, tokens, single + batch embeddings. |

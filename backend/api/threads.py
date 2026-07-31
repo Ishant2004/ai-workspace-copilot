@@ -18,9 +18,10 @@ of it to the model each turn.
 import json
 from collections.abc import Iterator
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
+from api.deps import current_user_id
 from config import settings
 from models import (
     Message,
@@ -46,32 +47,42 @@ def _sse(data: dict) -> str:
 
 
 @router.post("/threads", response_model=ThreadItem)
-def create_thread(body: ThreadCreate) -> ThreadItem:
-    return ThreadItem(**threads.create_thread(body.title))
+def create_thread(
+    body: ThreadCreate, user_id: int = Depends(current_user_id)
+) -> ThreadItem:
+    return ThreadItem(**threads.create_thread(user_id, body.title))
 
 
 @router.get("/threads", response_model=list[ThreadItem])
-def list_threads() -> list[ThreadItem]:
-    return [ThreadItem(**t) for t in threads.list_threads()]
+def list_threads(user_id: int = Depends(current_user_id)) -> list[ThreadItem]:
+    return [ThreadItem(**t) for t in threads.list_threads(user_id)]
 
 
 @router.get("/threads/{thread_id}/messages", response_model=list[ThreadMessage])
-def get_messages(thread_id: int) -> list[ThreadMessage]:
-    if not threads.thread_exists(thread_id):
+def get_messages(
+    thread_id: int, user_id: int = Depends(current_user_id)
+) -> list[ThreadMessage]:
+    if not threads.thread_exists(thread_id, user_id):
         raise HTTPException(status_code=404, detail="Thread not found")
     return [ThreadMessage(**m) for m in threads.get_messages(thread_id)]
 
 
 @router.delete("/threads/{thread_id}")
-def delete_thread(thread_id: int) -> dict:
-    if not threads.delete_thread(thread_id):
+def delete_thread(
+    thread_id: int, user_id: int = Depends(current_user_id)
+) -> dict:
+    if not threads.delete_thread(thread_id, user_id):
         raise HTTPException(status_code=404, detail="Thread not found")
     return {"deleted": True, "id": thread_id}
 
 
 @router.post("/threads/{thread_id}/chat")
-def thread_chat(thread_id: int, request: ThreadChatRequest) -> StreamingResponse:
-    if not threads.thread_exists(thread_id):
+def thread_chat(
+    thread_id: int,
+    request: ThreadChatRequest,
+    user_id: int = Depends(current_user_id),
+) -> StreamingResponse:
+    if not threads.thread_exists(thread_id, user_id):
         raise HTTPException(status_code=404, detail="Thread not found")
 
     # Persist the user's message first, so it's saved even if generation fails.
@@ -91,13 +102,13 @@ def thread_chat(thread_id: int, request: ThreadChatRequest) -> StreamingResponse
             )
             # Phase 13: what we durably know about the user, injected into the
             # system prompt so the assistant remembers across conversations.
-            user_profile = profile.preamble()
+            user_profile = profile.preamble(user_id)
 
             if request.mode == "team":
                 # Phase 16: multi-agent pipeline. Each sub-agent's contribution
                 # streams as agent_start/agent_message; the reviewer's output is
                 # the final answer (an `answer` event → chunk).
-                for event in coordinator.run_team(request.content):
+                for event in coordinator.run_team(user_id, request.content):
                     if event["type"] == "answer":
                         reply += event["content"]
                         yield _sse({"type": "chunk", "content": event["content"]})
@@ -106,7 +117,7 @@ def thread_chat(thread_id: int, request: ThreadChatRequest) -> StreamingResponse
             elif request.mode == "plan":
                 # Phase 12: plan-and-execute. Emit the plan and each step's
                 # progress; the synthesized final answer arrives as `answer`.
-                for event in planner.run_plan(request.content):
+                for event in planner.run_plan(user_id, request.content):
                     if event["type"] == "answer":
                         reply += event["content"]
                         yield _sse({"type": "chunk", "content": event["content"]})
@@ -117,7 +128,7 @@ def thread_chat(thread_id: int, request: ThreadChatRequest) -> StreamingResponse
                 # it can answer. Surface each tool call/result; the final answer
                 # arrives as `answer` events which we stream as chunks.
                 for event in tools.run_tool_loop(
-                    window, user_profile + build_agent_system_prompt()
+                    user_id, window, user_profile + build_agent_system_prompt()
                 ):
                     if event["type"] == "answer":
                         reply += event["content"]
@@ -130,7 +141,7 @@ def thread_chat(thread_id: int, request: ThreadChatRequest) -> StreamingResponse
                 ]
                 system_prompt = user_profile or None
                 if request.mode == "rag":
-                    hits = run_search(request.content, 4, "hybrid")
+                    hits = run_search(user_id, request.content, 4, "hybrid")
                     yield _sse(
                         {
                             "type": "sources",
@@ -159,7 +170,7 @@ def thread_chat(thread_id: int, request: ThreadChatRequest) -> StreamingResponse
                 threads.add_message(thread_id, "assistant", reply)
                 # Phase 13: learn durable facts from this turn, in the
                 # background so it never delays the response.
-                profile.extract_in_background(request.content)
+                profile.extract_in_background(user_id, request.content)
             yield _sse({"type": "done"})
         except Exception as exc:
             yield _sse({"type": "error", "content": str(exc)})

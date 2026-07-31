@@ -25,40 +25,40 @@ _RRF_K = 60
 
 
 def run_search(
-    query: str, k: int, mode: str, rerank: bool = False
+    user_id: int, query: str, k: int, mode: str, rerank: bool = False
 ) -> list[dict]:
-    """Search, then optionally rerank.
+    """Search the user's documents, then optionally rerank.
 
     When reranking, we first retrieve a larger candidate set (so the
     cross-encoder has enough to choose from), then trim to k. Otherwise we just
     retrieve k directly.
     """
     n = settings.rerank_candidates if rerank else k
-    hits = _retrieve(query, n, mode)
+    hits = _retrieve(user_id, query, n, mode)
     if rerank:
         hits = rerank_service.rerank(query, hits, k)
     return hits
 
 
-def _retrieve(query: str, n: int, mode: str) -> list[dict]:
-    """Return up to n candidates using the requested strategy."""
+def _retrieve(user_id: int, query: str, n: int, mode: str) -> list[dict]:
+    """Return up to n of the user's candidates using the requested strategy."""
     if mode == "keyword":
-        hits = db.keyword_search(query, n)
+        hits = db.keyword_search(user_id, query, n)
         return [
             {**h, "similarity": 0.0, "matched_by": ["keyword"]} for h in hits
         ]
 
     if mode == "vector":
-        hits = db.search(embed_text(query), n)
+        hits = db.search(user_id, embed_text(query), n)
         return [{**h, "matched_by": ["vector"]} for h in hits]
 
-    return _hybrid(query, n)
+    return _hybrid(user_id, query, n)
 
 
-def _hybrid(query: str, k: int) -> list[dict]:
+def _hybrid(user_id: int, query: str, k: int) -> list[dict]:
     candidates = max(_CANDIDATES, k)
-    vector_hits = db.search(embed_text(query), candidates)
-    keyword_hits = db.keyword_search(query, candidates)
+    vector_hits = db.search(user_id, embed_text(query), candidates)
+    keyword_hits = db.keyword_search(user_id, query, candidates)
 
     scores: dict[int, float] = {}
     data: dict[int, dict] = {}

@@ -25,10 +25,18 @@ def init_threads() -> None:
             """
             CREATE TABLE IF NOT EXISTS threads (
                 id         BIGSERIAL PRIMARY KEY,
+                user_id    BIGINT,
                 title      TEXT NOT NULL DEFAULT 'New chat',
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
             );
             """
+        )
+        # Multi-tenancy: owner column (added for tables created before it).
+        conn.execute(
+            "ALTER TABLE threads ADD COLUMN IF NOT EXISTS user_id BIGINT;"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS threads_user_idx ON threads (user_id);"
         )
         conn.execute(
             """
@@ -47,17 +55,18 @@ def init_threads() -> None:
         )
 
 
-def create_thread(title: str = "New chat") -> dict:
+def create_thread(user_id: int, title: str = "New chat") -> dict:
     with get_conn(register=False) as conn:
         row = conn.execute(
-            "INSERT INTO threads (title) VALUES (%s) RETURNING id, title;",
-            (title or "New chat",),
+            "INSERT INTO threads (user_id, title) VALUES (%s, %s) "
+            "RETURNING id, title;",
+            (user_id, title or "New chat"),
         ).fetchone()
     return {"id": row[0], "title": row[1]}
 
 
-def list_threads() -> list[dict]:
-    """All threads, most recently active first, with a message count."""
+def list_threads(user_id: int) -> list[dict]:
+    """The user's threads, most recently active first, with a message count."""
     with get_conn(register=False) as conn:
         rows = conn.execute(
             """
@@ -65,20 +74,24 @@ def list_threads() -> list[dict]:
                    coalesce(max(m.created_at), t.created_at) AS last_at
             FROM threads t
             LEFT JOIN messages m ON m.thread_id = t.id
+            WHERE t.user_id = %s
             GROUP BY t.id
             ORDER BY last_at DESC;
-            """
+            """,
+            (user_id,),
         ).fetchall()
     return [
         {"id": r[0], "title": r[1], "message_count": r[2]} for r in rows
     ]
 
 
-def thread_exists(thread_id: int) -> bool:
+def thread_exists(thread_id: int, user_id: int) -> bool:
+    """True only if the thread exists AND belongs to the user (access guard)."""
     with get_conn(register=False) as conn:
         return (
             conn.execute(
-                "SELECT 1 FROM threads WHERE id = %s;", (thread_id,)
+                "SELECT 1 FROM threads WHERE id = %s AND user_id = %s;",
+                (thread_id, user_id),
             ).fetchone()
             is not None
         )
@@ -125,9 +138,10 @@ def update_title(thread_id: int, title: str) -> None:
         )
 
 
-def delete_thread(thread_id: int) -> bool:
+def delete_thread(thread_id: int, user_id: int) -> bool:
     with get_conn(register=False) as conn:
         result = conn.execute(
-            "DELETE FROM threads WHERE id = %s;", (thread_id,)
+            "DELETE FROM threads WHERE id = %s AND user_id = %s;",
+            (thread_id, user_id),
         )
         return result.rowcount > 0

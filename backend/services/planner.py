@@ -61,7 +61,9 @@ def make_plan(goal: str) -> list[str]:
     return tasks or [goal]  # fall back to treating the goal as one step
 
 
-def _execute_step(goal: str, task: str, prior: list[str]) -> Iterator[dict]:
+def _execute_step(
+    user_id: int, goal: str, task: str, prior: list[str]
+) -> Iterator[dict]:
     """Run one step with the tool agent, retrying transient failures.
 
     Yields the loop's tool_call/tool_result events plus a final step_result.
@@ -75,7 +77,7 @@ def _execute_step(goal: str, task: str, prior: list[str]) -> Iterator[dict]:
         result = ""
         try:
             for event in tools.run_tool_loop(
-                messages, build_agent_system_prompt()
+                user_id, messages, build_agent_system_prompt()
             ):
                 if event["type"] == "answer":
                     result = event["content"]
@@ -91,7 +93,7 @@ def _execute_step(goal: str, task: str, prior: list[str]) -> Iterator[dict]:
     yield {"type": "step_result", "result": f"[step failed: {last_error}]"}
 
 
-def run_plan(goal: str) -> Iterator[dict]:
+def run_plan(user_id: int, goal: str) -> Iterator[dict]:
     """Plan, execute each step, then synthesize. Yields events:
     plan | step_start | tool_call | tool_result | step_result | answer."""
     tasks = make_plan(goal)
@@ -101,7 +103,7 @@ def run_plan(goal: str) -> Iterator[dict]:
     for i, task in enumerate(tasks):
         yield {"type": "step_start", "index": i, "task": task}
         result = ""
-        for event in _execute_step(goal, task, prior):
+        for event in _execute_step(user_id, goal, task, prior):
             if event["type"] == "step_result":
                 result = event["result"]
                 yield {"type": "step_result", "index": i, "result": result}

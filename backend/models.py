@@ -17,6 +17,21 @@ class Message(BaseModel):
     content: str
 
 
+# --- Auth (per-user segregation) ---
+
+
+class AuthRequest(BaseModel):
+    """Body of POST /auth/signup and /auth/login."""
+
+    email: str
+    password: str
+
+
+class AuthResponse(BaseModel):
+    token: str
+    email: str
+
+
 class ChatRequest(BaseModel):
     """Body of POST /chat. The full message history is sent every time because
     the LLM itself is stateless — it only knows what we hand it in the prompt."""

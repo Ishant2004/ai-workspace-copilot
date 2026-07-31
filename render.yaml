@@ -14,6 +14,9 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      # Auth: a long random string. Render can generate one for you.
+      - key: JWT_SECRET
+        generateValue: true
       - key: GEMINI_MODEL
         value: gemini-2.5-flash
       - key: GEMINI_EMBED_MODEL

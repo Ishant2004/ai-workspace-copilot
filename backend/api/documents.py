@@ -13,8 +13,9 @@ plus semantic search:
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from api.deps import current_user_id
 from models import (
     DeleteResponse,
     DocumentItem,
@@ -36,57 +37,71 @@ def _now() -> str:
 
 
 @router.post("/documents", response_model=DocumentResponse)
-def add_document(request: DocumentRequest) -> DocumentResponse:
+def add_document(
+    request: DocumentRequest, user_id: int = Depends(current_user_id)
+) -> DocumentResponse:
     # Embed the text with the SAME model/dimension used for queries, then store.
     embedding = embed_text(request.text)
     metadata = {"source": "manual", "created_at": _now()}
     doc_id = db.insert_document(
-        request.title, request.text, embedding, metadata
+        user_id, request.title, request.text, embedding, metadata
     )
     return DocumentResponse(
         id=doc_id,
         title=request.title,
-        total_documents=db.count_documents(),
+        total_documents=db.count_documents(user_id),
     )
 
 
 @router.get("/documents", response_model=list[DocumentItem])
-def list_documents() -> list[DocumentItem]:
-    return [DocumentItem(**d) for d in db.list_documents()]
+def list_documents(user_id: int = Depends(current_user_id)) -> list[DocumentItem]:
+    return [DocumentItem(**d) for d in db.list_documents(user_id)]
 
 
 @router.put("/documents/{doc_id}", response_model=DocumentResponse)
-def update_document(doc_id: int, request: DocumentRequest) -> DocumentResponse:
+def update_document(
+    doc_id: int,
+    request: DocumentRequest,
+    user_id: int = Depends(current_user_id),
+) -> DocumentResponse:
     # The text may have changed, so we must re-embed to keep the stored vector
     # consistent with the stored text.
     embedding = embed_text(request.text)
-    updated = db.update_document(doc_id, request.title, request.text, embedding)
+    updated = db.update_document(
+        user_id, doc_id, request.title, request.text, embedding
+    )
     if not updated:
         raise HTTPException(status_code=404, detail=f"Document {doc_id} not found")
     return DocumentResponse(
         id=doc_id,
         title=request.title,
-        total_documents=db.count_documents(),
+        total_documents=db.count_documents(user_id),
     )
 
 
 @router.delete("/documents/{doc_id}", response_model=DeleteResponse)
-def delete_document(doc_id: int) -> DeleteResponse:
-    deleted = db.delete_document(doc_id)
+def delete_document(
+    doc_id: int, user_id: int = Depends(current_user_id)
+) -> DeleteResponse:
+    deleted = db.delete_document(user_id, doc_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Document {doc_id} not found")
     return DeleteResponse(
         id=doc_id,
         deleted=True,
-        total_documents=db.count_documents(),
+        total_documents=db.count_documents(user_id),
     )
 
 
 @router.post("/search", response_model=SearchResponse)
-def search(request: SearchRequest) -> SearchResponse:
-    # Phase 7: run the chosen strategy (vector / keyword / hybrid). The service
-    # handles embedding the query when the mode needs it.
-    hits = run_search(request.query, request.k, request.mode, request.rerank)
+def search(
+    request: SearchRequest, user_id: int = Depends(current_user_id)
+) -> SearchResponse:
+    # Phase 7: run the chosen strategy (vector / keyword / hybrid) over the
+    # user's own documents.
+    hits = run_search(
+        user_id, request.query, request.k, request.mode, request.rerank
+    )
     return SearchResponse(
         query=request.query,
         mode=request.mode,
@@ -95,5 +110,5 @@ def search(request: SearchRequest) -> SearchResponse:
 
 
 @router.get("/documents/count")
-def documents_count() -> dict:
-    return {"total_documents": db.count_documents()}
+def documents_count(user_id: int = Depends(current_user_id)) -> dict:
+    return {"total_documents": db.count_documents(user_id)}

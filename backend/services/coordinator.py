@@ -43,7 +43,7 @@ def _generate(prompt: str) -> str:
     raise RuntimeError(last)
 
 
-def run_team(goal: str) -> Iterator[dict]:
+def run_team(user_id: int, goal: str) -> Iterator[dict]:
     """Run the pipeline, yielding events:
     agent_start | agent_message | answer."""
 
@@ -52,10 +52,10 @@ def run_team(goal: str) -> Iterator[dict]:
     plan = _generate(build_team_planner_prompt(goal))
     yield {"type": "agent_message", "role": "Planner", "content": plan}
 
-    # 2. Retriever — gather context from the knowledge base (deterministic
-    #    hybrid search; this is the tool the retriever role uses).
+    # 2. Retriever — gather context from the user's knowledge base
+    #    (deterministic hybrid search; this is the tool the retriever role uses).
     yield {"type": "agent_start", "role": "Retriever"}
-    hits = run_search(goal, 4, "hybrid")
+    hits = run_search(user_id, goal, 4, "hybrid")
     context = "\n\n".join(
         f"[#{h['id']}] {h['title']}\n{h['text']}" for h in hits
     )

@@ -19,8 +19,9 @@ any other, now carrying provenance.
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 
+from api.deps import current_user_id
 from config import settings
 from models import UploadResponse
 from services import db
@@ -32,7 +33,9 @@ router = APIRouter()
 
 
 @router.post("/upload", response_model=UploadResponse)
-async def upload_pdf(file: UploadFile) -> UploadResponse:
+async def upload_pdf(
+    file: UploadFile, user_id: int = Depends(current_user_id)
+) -> UploadResponse:
     if not (file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Please upload a .pdf file")
 
@@ -81,11 +84,11 @@ async def upload_pdf(file: UploadFile) -> UploadResponse:
         meta = {**meta, "chunk_index": i}
         title = f"{filename} · p{meta['page']} · chunk {i + 1}/{total}"
         rows.append((title, text, embedding, meta))
-    stored = db.insert_documents(rows)
+    stored = db.insert_documents(user_id, rows)
 
     return UploadResponse(
         filename=filename,
         pages=len(pages),
         chunks_stored=stored,
-        total_documents=db.count_documents(),
+        total_documents=db.count_documents(user_id),
     )
