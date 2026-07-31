@@ -27,7 +27,9 @@ single application until it resembles a production AI copilot.
 | 14 | MCP server | ✅ Done |
 | 15 | External MCP connectors | ✅ Done |
 | 16 | Multi-agent system | ✅ Done |
-| 17 | Production deployment ($0) | ⏳ Planned |
+| 17 | Production deployment ($0) | ✅ Done |
+
+🎉 All 17 phases complete.
 
 See [`plan.md`](plan.md) for the full roadmap.
 
@@ -75,5 +77,6 @@ Open http://localhost:5173.
 - [docs/backend.md](docs/backend.md) — backend internals
 - [docs/frontend.md](docs/frontend.md) — frontend internals
 - [docs/mcp.md](docs/mcp.md) — MCP server + how to connect Claude Desktop / Cursor
+- [docs/deployment.md](docs/deployment.md) — deploy to Vercel + Render ($0)
 
 Docs are updated on every phase.

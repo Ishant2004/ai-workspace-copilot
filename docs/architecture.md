@@ -45,6 +45,7 @@ Browser (React)  ──HTTP/SSE──►  FastAPI backend  ──►  Gemini LLM
 | 14 | MCP server | ✅ Done |
 | 15 | External MCP connectors | ✅ Done |
 | 16 | Multi-agent system | ✅ Done |
+| 17 | Production deployment ($0) | ✅ Done |
 
 ## Current data flow (Phase 0)
 
@@ -501,6 +502,27 @@ answer ("receive your laptop on day one… complete security training…").
 > This reuses everything built so far: the Retriever is Phase 7 hybrid search,
 > the sub-agents are Phase 0 generation with role prompts, and the whole thing
 > persists as a normal thread (Phase 9). Composition, not new machinery.
+
+## Phase 17: production deployment ($0)
+
+The final step: ship it, all on free tiers. Frontend on **Vercel**, backend as a
+**Docker** container on **Render**, data on **Neon** — the pieces already used in
+dev.
+
+The one production wrinkle is origins: in dev the frontend and backend share an
+origin via Vite's `/api` proxy; in production they're separate hosts. Rather than
+change the frontend code or wrestle CORS, `frontend/vercel.json` **rewrites**
+`/api/*` to the Render backend — so the same relative `/api/...` calls work in
+both environments.
+
+Artifacts: `backend/Dockerfile` (+ `.dockerignore`), `render.yaml` (one-click
+blueprint, `/health` health check), `frontend/vercel.json` (API rewrite), and
+`.github/workflows/ci.yml` (build-checks both apps on push). Keep-alive is a free
+UptimeRobot ping to `/health` every 10 min so Render's free instance doesn't cold
+-start. Full steps in [deployment.md](deployment.md).
+
+Verified locally: the backend image **builds** and a running container returns
+`{"status":"ok"}` from `/health`; the frontend production build succeeds.
 
 ## Why streaming (SSE)?
 
