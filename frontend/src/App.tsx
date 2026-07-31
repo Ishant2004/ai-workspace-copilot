@@ -35,11 +35,18 @@ export default function App() {
   return (
     <div className="flex h-screen flex-col bg-neutral-50 text-neutral-900">
       <header className="border-b border-neutral-200 bg-white px-4 py-3">
-        <div className="mx-auto flex w-full max-w-2xl items-center justify-between">
-          <div>
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center justify-between">
             <h1 className="text-lg font-semibold">AI Workspace Copilot</h1>
+            {/* On mobile Sign out sits with the title; on desktop it's in the nav. */}
+            <button
+              onClick={signOut}
+              className="text-sm font-medium text-neutral-500 hover:text-red-600 sm:hidden"
+            >
+              Sign out
+            </button>
           </div>
-          <nav className="flex gap-1 rounded-lg bg-neutral-100 p-1 text-sm">
+          <nav className="no-scrollbar flex gap-1 overflow-x-auto rounded-lg bg-neutral-100 p-1 text-sm">
             <TabButton active={tab === "chat"} onClick={() => setTab("chat")}>
               Chat
             </TabButton>
@@ -47,7 +54,7 @@ export default function App() {
               active={tab === "tokens"}
               onClick={() => setTab("tokens")}
             >
-              Token Inspector
+              Tokens
             </TabButton>
             <TabButton
               active={tab === "embed"}
@@ -59,11 +66,11 @@ export default function App() {
               active={tab === "search"}
               onClick={() => setTab("search")}
             >
-              Vector Search
+              Search
             </TabButton>
             <button
               onClick={signOut}
-              className="rounded-md px-3 py-1 font-medium text-neutral-500 hover:text-red-600"
+              className="hidden shrink-0 rounded-md px-3 py-1 font-medium text-neutral-500 hover:text-red-600 sm:block"
               title="Sign out"
             >
               Sign out
@@ -117,7 +124,7 @@ function TabButton({
     <button
       onClick={onClick}
       className={
-        "rounded-md px-3 py-1 font-medium transition " +
+        "shrink-0 whitespace-nowrap rounded-md px-3 py-1 font-medium transition " +
         (active
           ? "bg-white text-neutral-900 shadow-sm"
           : "text-neutral-500 hover:text-neutral-800")

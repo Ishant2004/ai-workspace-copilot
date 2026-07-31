@@ -1,1 +1,11 @@
 @import "tailwindcss";
+
+/* Hide scrollbars on horizontally-scrollable strips (e.g. the mobile tab bar)
+   while keeping them scrollable. */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

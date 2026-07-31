@@ -147,6 +147,19 @@ streaming. `send()` creates an `AbortController` and passes its `signal` through
 raises no error), and a `finally` in `send()` resets the busy state. This is the
 escape hatch when the model is slow or hangs.
 
+## Mobile / responsive
+
+The UI adapts to small screens:
+- **Header tabs** sit in a horizontally-scrollable strip (`no-scrollbar`), and
+  "Sign out" moves next to the title on mobile.
+- The **chat sidebar** (conversations + memory) is a static column on `sm+` but a
+  slide-over **drawer** on mobile, opened by a "☰ Chats" button and dismissed by
+  tapping the backdrop or picking a chat.
+- The **mode selector** and long rows scroll horizontally rather than overflow.
+
+Tailwind's `sm:` breakpoint (640px) is the divider; `index.html` sets the
+`viewport` meta so it scales correctly on phones.
+
 ## The `/api` proxy
 
 In development the frontend runs on port 5173 and the backend on 8000. Vite

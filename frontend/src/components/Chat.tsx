@@ -42,6 +42,7 @@ export default function Chat() {
   const [mode, setMode] = useState<ChatMode>("chat");
   const [dbError, setDbError] = useState<string | null>(null);
   const [facts, setFacts] = useState<string[]>([]); // Phase 13 profile memory
+  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Lets us cancel an in-flight (possibly hanging) request.
@@ -89,11 +90,13 @@ export default function Chat() {
 
   async function openThread(id: number) {
     setActiveId(id);
+    setSidebarOpen(false); // close the drawer on mobile after picking a chat
     setMessages(await getThreadMessages(id));
   }
 
   function newChat() {
     setActiveId(null);
+    setSidebarOpen(false);
     setMessages([]);
     setInput("");
   }
@@ -269,9 +272,25 @@ export default function Chat() {
             : "Ask me anything to get started.";
 
   return (
-    <div className="flex h-full">
-      {/* Sidebar: conversation list */}
-      <aside className="flex w-56 shrink-0 flex-col border-r border-neutral-200 bg-white">
+    <div className="relative flex h-full">
+      {/* Dimmed backdrop behind the drawer on mobile. */}
+      {sidebarOpen && (
+        <div
+          className="absolute inset-0 z-10 bg-black/30 sm:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar: conversation list. A slide-over drawer on mobile, a static
+          column on sm+ screens. */}
+      <aside
+        className={
+          "absolute inset-y-0 left-0 z-20 w-64 shrink-0 flex-col border-r " +
+          "border-neutral-200 bg-white sm:static sm:z-auto " +
+          (sidebarOpen ? "flex " : "hidden ") +
+          "sm:flex"
+        }
+      >
         <div className="p-2">
           <button
             onClick={newChat}
@@ -301,7 +320,7 @@ export default function Chat() {
               </button>
               <button
                 onClick={() => onDeleteThread(t.id)}
-                className="hidden text-xs text-neutral-400 hover:text-red-600 group-hover:block"
+                className="block shrink-0 text-xs text-neutral-400 hover:text-red-600 sm:hidden sm:group-hover:block"
                 title="Delete conversation"
               >
                 ✕
@@ -342,6 +361,15 @@ export default function Chat() {
 
       {/* Conversation */}
       <div className="flex min-w-0 flex-1 flex-col">
+        {/* Mobile-only bar to open the conversations drawer. */}
+        <div className="flex items-center gap-2 border-b border-neutral-200 bg-white px-3 py-2 sm:hidden">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="rounded-md border border-neutral-300 px-2.5 py-1 text-sm font-medium text-neutral-700"
+          >
+            ☰ Chats
+          </button>
+        </div>
         <main className="mx-auto w-full max-w-2xl flex-1 space-y-4 overflow-y-auto p-4">
           {messages.length === 0 && (
             <p className="mt-20 text-center text-neutral-400">{placeholder}</p>
@@ -380,13 +408,13 @@ export default function Chat() {
         <footer className="border-t border-neutral-200 bg-white p-4">
           <div className="mx-auto w-full max-w-2xl space-y-2">
             {/* Mode selector: plain chat, RAG grounding, or tool-using agent. */}
-            <div className="flex gap-1 rounded-lg bg-neutral-100 p-1 text-xs">
+            <div className="no-scrollbar flex gap-1 overflow-x-auto rounded-lg bg-neutral-100 p-1 text-xs">
               {(["chat", "rag", "agent", "plan", "team"] as ChatMode[]).map((m) => (
                 <button
                   key={m}
                   onClick={() => setMode(m)}
                   className={
-                    "rounded-md px-3 py-1 font-medium capitalize transition " +
+                    "shrink-0 rounded-md px-3 py-1 font-medium capitalize transition " +
                     (mode === m
                       ? "bg-white text-neutral-900 shadow-sm"
                       : "text-neutral-500 hover:text-neutral-800")
@@ -403,7 +431,7 @@ export default function Chat() {
                 ref={inputRef}
                 className="max-h-36 flex-1 resize-none overflow-y-auto rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 rows={1}
-                placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
+                placeholder="Type a message…"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
