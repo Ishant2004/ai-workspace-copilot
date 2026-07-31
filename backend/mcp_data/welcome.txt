@@ -1,0 +1,3 @@
+Welcome to the AI Workspace Copilot sandbox.
+This file is served by the external filesystem MCP server.
+Secret code: OWL-7788

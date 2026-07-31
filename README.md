@@ -25,7 +25,9 @@ single application until it resembles a production AI copilot.
 | 12 | Planning & task execution | ✅ Done |
 | 13 | Long-term user profile memory | ✅ Done |
 | 14 | MCP server | ✅ Done |
-| 15+ | External MCP connectors, multi-agent, deployment… | ⏳ Planned |
+| 15 | External MCP connectors | ✅ Done |
+| 16 | Multi-agent system | ✅ Done |
+| 17 | Production deployment ($0) | ⏳ Planned |
 
 See [`plan.md`](plan.md) for the full roadmap.
 

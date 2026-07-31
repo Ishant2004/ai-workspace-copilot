@@ -34,7 +34,7 @@ from prompts import (
     build_rag_system_prompt,
     format_context_block,
 )
-from services import planner, profile, threads, tools
+from services import coordinator, planner, profile, threads, tools
 from services.gemini import stream_chat
 from services.search import run_search
 
@@ -93,7 +93,17 @@ def thread_chat(thread_id: int, request: ThreadChatRequest) -> StreamingResponse
             # system prompt so the assistant remembers across conversations.
             user_profile = profile.preamble()
 
-            if request.mode == "plan":
+            if request.mode == "team":
+                # Phase 16: multi-agent pipeline. Each sub-agent's contribution
+                # streams as agent_start/agent_message; the reviewer's output is
+                # the final answer (an `answer` event → chunk).
+                for event in coordinator.run_team(request.content):
+                    if event["type"] == "answer":
+                        reply += event["content"]
+                        yield _sse({"type": "chunk", "content": event["content"]})
+                    else:
+                        yield _sse(event)
+            elif request.mode == "plan":
                 # Phase 12: plan-and-execute. Emit the plan and each step's
                 # progress; the synthesized final answer arrives as `answer`.
                 for event in planner.run_plan(request.content):

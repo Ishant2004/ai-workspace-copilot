@@ -19,12 +19,16 @@ type Step = { name: string; args: Record<string, unknown>; result?: string };
 // One plan step (Phase 12): a subtask, the tools it used, and its result.
 type PlanStep = { task: string; result?: string; tools: Step[] };
 
+// One team agent's contribution (Phase 16): its role and output.
+type AgentTurn = { role: string; content?: string };
+
 // A chat message plus, for RAG answers, the grounding docs; for agent answers,
-// the tool steps; and for plan answers, the plan.
+// the tool steps; for plan answers, the plan; for team answers, the agents.
 type DisplayMessage = Message & {
   sources?: SearchHit[];
   steps?: Step[];
   plan?: PlanStep[];
+  agents?: AgentTurn[];
 };
 
 // Phase 0: streaming chat. Phase 4: RAG grounding. Phase 9: persistent threads.
@@ -159,6 +163,23 @@ export default function Chat() {
       onChunk: (extra) =>
         updateAssistant((m) => ({ ...m, content: m.content + extra })),
       onSources: (sources) => updateAssistant((m) => ({ ...m, sources })),
+      onAgentStart: (role) =>
+        updateAssistant((m) => ({
+          ...m,
+          agents: [...(m.agents ?? []), { role }],
+        })),
+      onAgentMessage: (role, content) =>
+        updateAssistant((m) => {
+          const agents = [...(m.agents ?? [])];
+          // Fill the most recent turn for this role.
+          for (let i = agents.length - 1; i >= 0; i--) {
+            if (agents[i].role === role && agents[i].content === undefined) {
+              agents[i] = { ...agents[i], content };
+              return { ...m, agents };
+            }
+          }
+          return { ...m, agents: [...agents, { role, content }] };
+        }),
       onPlan: (steps) =>
         updateAssistant((m) => ({
           ...m,
@@ -243,7 +264,9 @@ export default function Chat() {
         ? "Ask something — the agent can search docs, do math, tell the time."
         : mode === "plan"
           ? "Give a multi-step goal — it'll plan, then execute each step."
-          : "Ask me anything to get started.";
+          : mode === "team"
+            ? "Give a goal — a team (planner, retriever, solver, reviewer) tackles it."
+            : "Ask me anything to get started.";
 
   return (
     <div className="flex h-full">
@@ -329,6 +352,9 @@ export default function Chat() {
               className={m.role === "user" ? "text-right" : "text-left"}
             >
               {/* Plan (Phase 12) and agent tool steps appear above the answer. */}
+              {m.agents && m.agents.length > 0 && (
+                <Team agents={m.agents} busy={busy} />
+              )}
               {m.plan && m.plan.length > 0 && <Plan plan={m.plan} />}
               {m.steps && m.steps.length > 0 && <Steps steps={m.steps} />}
               {(m.content || m.role === "user" || busy) && (
@@ -355,7 +381,7 @@ export default function Chat() {
           <div className="mx-auto w-full max-w-2xl space-y-2">
             {/* Mode selector: plain chat, RAG grounding, or tool-using agent. */}
             <div className="flex gap-1 rounded-lg bg-neutral-100 p-1 text-xs">
-              {(["chat", "rag", "agent", "plan"] as ChatMode[]).map((m) => (
+              {(["chat", "rag", "agent", "plan", "team"] as ChatMode[]).map((m) => (
                 <button
                   key={m}
                   onClick={() => setMode(m)}
@@ -409,6 +435,33 @@ export default function Chat() {
 
 // The plan (Phase 12): a numbered checklist. Each step shows the tools it used
 // and its result once executed; a spinner dot marks steps still running.
+// The team (Phase 16): one card per sub-agent showing its role and output, in
+// the order they ran. A role still working shows a pulsing dot.
+function Team({ agents, busy }: { agents: AgentTurn[]; busy: boolean }) {
+  return (
+    <div className="mb-1 max-w-[85%] space-y-2">
+      {agents.map((a, i) => (
+        <div
+          key={i}
+          className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm"
+        >
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-violet-700">
+            {a.role}
+            {a.content === undefined && busy && (
+              <span className="ml-1 animate-pulse text-violet-400">…</span>
+            )}
+          </div>
+          {a.content !== undefined && (
+            <div className="whitespace-pre-wrap text-neutral-700">
+              {a.content}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Plan({ plan }: { plan: PlanStep[] }) {
   return (
     <div className="mb-1 max-w-[85%] space-y-2 rounded-lg border border-indigo-200 bg-indigo-50 p-3">

@@ -197,6 +197,9 @@ interface StreamHandlers {
   onPlan?: (steps: { task: string }[]) => void;
   onStepStart?: (index: number, task: string) => void;
   onStepResult?: (index: number, result: string) => void;
+  // Only the multi-agent team emits these (Phase 16).
+  onAgentStart?: (role: string) => void;
+  onAgentMessage?: (role: string, content: string) => void;
 }
 
 // Shared SSE reader used by all streaming endpoints. It POSTs the body, then
@@ -261,6 +264,10 @@ async function streamSse(
           handlers.onStepStart?.(payload.index, payload.task);
         else if (payload.type === "step_result")
           handlers.onStepResult?.(payload.index, payload.result);
+        else if (payload.type === "agent_start")
+          handlers.onAgentStart?.(payload.role);
+        else if (payload.type === "agent_message")
+          handlers.onAgentMessage?.(payload.role, payload.content);
         else if (payload.type === "done") handlers.onDone();
         else if (payload.type === "error") handlers.onError(payload.content);
       }
@@ -338,7 +345,7 @@ export async function clearProfile(): Promise<void> {
   if (!r.ok) throw new Error(await errorText(r, "Clear profile"));
 }
 
-export type ChatMode = "chat" | "rag" | "agent" | "plan";
+export type ChatMode = "chat" | "rag" | "agent" | "plan" | "team";
 
 // Send one new message to a thread. The backend loads history itself and
 // persists both the question and the streamed answer. `mode` selects plain

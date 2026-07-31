@@ -73,3 +73,32 @@ asyncio.run(main())
 
 Verified output: `['search_documents', 'calculate', 'get_current_time']` and
 `42`, plus `search_documents` returning a stored chunk.
+
+---
+
+# Connecting external MCP servers (Phase 15)
+
+The reverse direction: our **agent connects to other people's MCP servers** and
+uses their tools. Declare servers in `backend/mcp_servers.json` (copy
+`mcp_servers.example.json`):
+
+```json
+{
+  "servers": [
+    {
+      "name": "filesystem",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/abs/path/to/dir"]
+    }
+  ]
+}
+```
+
+On first use the agent connects to each server, discovers its tools, and exposes
+them namespaced as `filesystem__read_text_file`, etc. — added to the agent's tool
+set automatically. `GET /api/mcp/tools` lists what was discovered
+(`?refresh=true` to rediscover). Add GitHub / Postgres / etc. servers the same
+way; no code changes needed.
+
+> `mcp_servers.json` is gitignored (absolute paths are machine-specific); the
+> committed `mcp_servers.example.json` is the template.

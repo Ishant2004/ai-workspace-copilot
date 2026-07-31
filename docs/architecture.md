@@ -43,6 +43,8 @@ Browser (React)  ──HTTP/SSE──►  FastAPI backend  ──►  Gemini LLM
 | 12 | Planning & task execution | ✅ Done |
 | 13 | Long-term user profile memory | ✅ Done |
 | 14 | MCP server | ✅ Done |
+| 15 | External MCP connectors | ✅ Done |
+| 16 | Multi-agent system | ✅ Done |
 
 ## Current data flow (Phase 0)
 
@@ -441,6 +443,64 @@ Verified with an MCP stdio client: it listed all three tools, `calculate("6*7")`
 returned `42`, and `search_documents("wifi password")` returned a stored chunk
 via real embeddings + pgvector. See [mcp.md](mcp.md) for Claude Desktop / Cursor
 connection config.
+
+## Phase 15: connecting external MCP servers
+
+Phase 14 exposed our tools *to* the world; Phase 15 pulls the world's tools *in*.
+Our agent becomes an MCP **client**: it connects to third-party MCP servers
+(filesystem, GitHub, Postgres, …), **discovers their tools at runtime**, and adds
+them to the same agent loop — no per-integration code. That's MCP's payoff:
+tools are discovered, not hard-wired.
+
+- **Config**: `backend/mcp_servers.json` lists servers to launch (command, args,
+  env). See `mcp_servers.example.json`. If absent, the feature is simply dormant.
+- **Discovery** (`services/mcp_client.py`): connect to each server over stdio,
+  `list_tools`, and expose each under a namespaced name `"<server>__<tool>"`
+  (so names never collide). Cached after first use.
+- **Schema bridge** (`services/tools.py`): each external tool's JSON-Schema is
+  converted to Gemini's `Schema` so the model can call it like any local tool.
+- **Dispatch**: unknown (non-local) tool names route to `mcp_client.call_tool`,
+  which connects and invokes the real server.
+
+The async MCP SDK is bridged to our synchronous agent loop with `asyncio.run`
+(connect-per-operation) — simple and adequate at this scale.
+
+`GET /mcp/tools` lists the discovered external tools.
+
+Verified: with the official filesystem MCP server configured (`npx
+@modelcontextprotocol/server-filesystem` over a sandbox dir), discovery returned
+14 tools, the agent's declaration set grew from 3 → 17, and a direct call to
+`filesystem__read_text_file` returned the sandbox file's contents ("Secret code:
+OWL-7788"). (The live LLM-picks-the-tool demo was blocked by intermittent model
+504s, but the integration path is identical to the verified local-tool agent.)
+
+## Phase 16: multi-agent system
+
+Phases 11–12 were a single agent. Phase 16 uses a small **team of specialists**,
+each with its own narrow role and system prompt, wired together by a lightweight
+Python **coordinator** (`services/coordinator.py`) — no framework:
+
+```
+Planner  → outlines the approach
+Retriever → gathers relevant context (hybrid search over the KB)
+Solver   → drafts an answer from the plan + context
+Reviewer → checks and polishes it into the final answer
+```
+
+Each stage's output feeds the next. Splitting one big task into focused,
+single-purpose prompts generally beats a do-everything prompt, and it makes the
+reasoning visible: the Chat tab's new **Team** mode streams each agent's
+contribution (`agent_start` / `agent_message` events) as its own card, then the
+Reviewer's polished output as the final answer.
+
+Verified end-to-end (backend + UI): with an "Onboarding" doc stored, the goal
+"What should a new hire expect in their first week?" ran all four roles in order —
+Retriever found the Onboarding doc — and the Reviewer produced a grounded final
+answer ("receive your laptop on day one… complete security training…").
+
+> This reuses everything built so far: the Retriever is Phase 7 hybrid search,
+> the sub-agents are Phase 0 generation with role prompts, and the whole thing
+> persists as a normal thread (Phase 9). Composition, not new machinery.
 
 ## Why streaming (SSE)?
 

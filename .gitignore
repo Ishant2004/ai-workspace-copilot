@@ -4,6 +4,9 @@ __pycache__/
 *.pyc
 .env
 
+# Local MCP client config (machine-specific absolute paths; see the .example)
+backend/mcp_servers.json
+
 # Node
 frontend/node_modules/
 frontend/dist/

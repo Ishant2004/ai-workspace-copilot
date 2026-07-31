@@ -27,7 +27,9 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `services/threads.py` | Conversation persistence: threads/messages, sliding window. |
 | `services/tools.py` | Tool registry + the tool-call loop (backs the agent, Phases 10–11). |
 | `services/planner.py` | Plan-and-execute agent: plan → execute (retries) → synthesize (Phase 12). |
+| `services/coordinator.py` | Multi-agent team: planner→retriever→solver→reviewer (Phase 16). |
 | `services/profile.py` | Long-term user memory: extract facts + system-prompt preamble (Phase 13). |
+| `services/mcp_client.py` | Connect to external MCP servers; discover + call their tools (Phase 15). |
 | `services/pdf.py` | Extract text from PDF bytes, per page (pypdf). |
 | `services/chunking.py` | Recursive boundary-aware chunking with overlap. |
 
@@ -141,6 +143,12 @@ Returns `{ "total_documents": N }`. Used by the UI badge.
   `chunk` (final answer), `done`, `error`. Tools: `calculate`,
   `get_current_time`, `search_documents`.
 
+### External MCP tools (Phase 15)
+- `GET /mcp/tools?refresh=false` → external tools discovered from the servers in
+  `mcp_servers.json`, namespaced `"<server>__<tool>"`. These are merged into the
+  agent's tool set automatically (`tools.all_declarations()`), and calls to them
+  dispatch through `services/mcp_client.py`.
+
 ### User profile (Phase 13)
 - `GET /profile` → `{ "facts": ["Name is Rajat", ...] }`.
 - `DELETE /profile` → clears all facts.
@@ -162,6 +170,8 @@ system prompt on every turn (chat/RAG/agent). A hard `gemini_request_timeout`
     events before the streamed answer;
   - `plan` (Phase 12): emits a `plan`, then `step_start` / `tool_call` /
     `tool_result` / `step_result` per step, then the synthesized `answer`.
+  - `team` (Phase 16): emits `agent_start` / `agent_message` per sub-agent
+    (Planner, Retriever, Solver, Reviewer), then the final `answer`.
   The assistant reply is persisted; new threads are auto-titled.
 
 > Requires `DATABASE_URL` (a Neon Postgres URL). The table + `vector` extension

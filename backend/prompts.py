@@ -98,3 +98,41 @@ def build_synthesis_prompt(goal: str, step_results: list[str]) -> str:
         "Write a clear, concise final answer to the user's goal using these "
         "results."
     )
+
+
+# --- Multi-agent team prompts (Phase 16) -----------------------------------
+# Each sub-agent has its own focused role. Specialization + a fresh, narrow
+# prompt per step tends to beat one prompt trying to do everything at once.
+
+
+def build_team_planner_prompt(goal: str) -> str:
+    return (
+        "You are the PLANNER on a small team answering a user's goal. Outline a "
+        "brief approach — 2 to 4 short bullet points — describing how to answer "
+        "it and what information is needed. Do not answer the goal yet.\n\n"
+        f"GOAL: {goal}"
+    )
+
+
+def build_solver_prompt(goal: str, plan: str, context: str) -> str:
+    return (
+        "You are the SOLVER on a small team. Using the plan and the retrieved "
+        "context below, write a complete draft answer to the user's goal. Rely "
+        "on the context where relevant; if it doesn't cover something, use your "
+        "own knowledge.\n\n"
+        f"GOAL: {goal}\n\n"
+        f"PLAN:\n{plan}\n\n"
+        f"RETRIEVED CONTEXT:\n{context or '(no documents found)'}"
+    )
+
+
+def build_reviewer_prompt(goal: str, draft: str, context: str) -> str:
+    return (
+        "You are the REVIEWER on a small team. Improve the draft answer below: "
+        "fix any inaccuracies (check it against the retrieved context), make "
+        "sure it fully and directly answers the goal, and keep it clear and "
+        "concise. Output ONLY the final, improved answer for the user.\n\n"
+        f"GOAL: {goal}\n\n"
+        f"RETRIEVED CONTEXT:\n{context or '(no documents found)'}\n\n"
+        f"DRAFT ANSWER:\n{draft}"
+    )

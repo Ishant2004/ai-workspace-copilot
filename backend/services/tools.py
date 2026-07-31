@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 
 from google.genai import types
 
-from services import gemini
+from services import gemini, mcp_client
 from services.search import run_search
 
 MAX_STEPS = 5  # safety cap on tool-call rounds
@@ -137,13 +137,73 @@ def declarations() -> list[dict]:
 
 
 def dispatch(name: str, args: dict) -> str:
+    # Local tool first; otherwise route to an external MCP tool (Phase 15).
     fn = _FUNCTIONS.get(name)
-    if fn is None:
-        return f"Unknown tool: {name}"
-    try:
-        return str(fn(**args))
-    except Exception as exc:
-        return f"Tool {name} failed: {exc}"
+    if fn is not None:
+        try:
+            return str(fn(**args))
+        except Exception as exc:
+            return f"Tool {name} failed: {exc}"
+    return mcp_client.call_tool(name, args)
+
+
+# --- External (MCP) tools → Gemini declarations (Phase 15) ------------------
+
+_JSON_TYPE_TO_GENAI = {
+    "string": types.Type.STRING,
+    "number": types.Type.NUMBER,
+    "integer": types.Type.INTEGER,
+    "boolean": types.Type.BOOLEAN,
+    "array": types.Type.ARRAY,
+    "object": types.Type.OBJECT,
+}
+
+
+def _json_schema_to_genai(schema: dict) -> types.Schema:
+    """Convert an MCP tool's JSON-Schema (a dict) into Gemini's Schema type.
+
+    Handles the common subset MCP tools use; anything unknown falls back to a
+    permissive object/string so the tool is still callable.
+    """
+    if not isinstance(schema, dict):
+        return types.Schema(type=types.Type.STRING)
+    gtype = _JSON_TYPE_TO_GENAI.get(schema.get("type", "object"), types.Type.OBJECT)
+
+    if gtype == types.Type.OBJECT:
+        props = {
+            key: _json_schema_to_genai(val)
+            for key, val in (schema.get("properties") or {}).items()
+        }
+        return types.Schema(
+            type=types.Type.OBJECT,
+            properties=props or None,
+            required=schema.get("required") or None,
+        )
+    if gtype == types.Type.ARRAY:
+        return types.Schema(
+            type=types.Type.ARRAY,
+            items=_json_schema_to_genai(schema.get("items") or {"type": "string"}),
+        )
+    return types.Schema(type=gtype, description=schema.get("description"))
+
+
+def _external_declarations() -> list[types.FunctionDeclaration]:
+    """Discover external MCP tools and describe them for the model."""
+    decls = []
+    for name, info in mcp_client.discover().items():
+        decls.append(
+            types.FunctionDeclaration(
+                name=name,
+                description=info["description"],
+                parameters=_json_schema_to_genai(info["schema"]),
+            )
+        )
+    return decls
+
+
+def all_declarations() -> list[types.FunctionDeclaration]:
+    """Local tools plus any discovered external MCP tools."""
+    return _DECLARATIONS + _external_declarations()
 
 
 # --- The tool-calling loop --------------------------------------------------
@@ -168,7 +228,7 @@ def run_tool_loop(
         for m in messages
     ]
     config = types.GenerateContentConfig(
-        tools=[types.Tool(function_declarations=_DECLARATIONS)],
+        tools=[types.Tool(function_declarations=all_declarations())],
         system_instruction=system_instruction,
     )
 

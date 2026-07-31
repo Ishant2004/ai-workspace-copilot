@@ -119,6 +119,9 @@ The Chat tab is a two-pane layout: a **sidebar** listing conversations (with
     (Tool events are attributed to the current step by capturing the step index
     at event time — React batches state updates, so reading it lazily would
     misattribute them.)
+  - *Team* (Phase 16) answers receive `agent_start` / `agent_message` events,
+    rendered as violet **role cards** (Planner, Retriever, Solver, Reviewer)
+    above the final answer bubble.
 
 All streaming shares one SSE reader (`streamSse` in `api.ts`) with an optional
 `onSources` handler. Messages are stored as `DisplayMessage` (a `Message` plus

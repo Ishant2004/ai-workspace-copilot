@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=str(_ENV_FILE), extra="ignore")
 
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.5-flash-lite"
+    gemini_model: str = "gemini-3.1-flash-lite"
     cors_origins: str = "http://localhost:5173"
     # Hard timeout (seconds) for any Gemini request, so a hung call fails fast.
     gemini_request_timeout: int = 60

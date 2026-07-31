@@ -16,7 +16,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from models import ToolsChatRequest
-from services import tools
+from services import mcp_client, tools
 
 router = APIRouter()
 
@@ -28,6 +28,18 @@ def _sse(data: dict) -> str:
 @router.get("/tools")
 def list_tools() -> dict:
     return {"tools": tools.declarations()}
+
+
+@router.get("/mcp/tools")
+def list_mcp_tools(refresh: bool = False) -> dict:
+    """External MCP tools the agent has discovered (Phase 15)."""
+    discovered = mcp_client.discover(refresh=refresh)
+    return {
+        "tools": [
+            {"name": name, "description": info["description"]}
+            for name, info in discovered.items()
+        ]
+    }
 
 
 @router.post("/tools/chat")
