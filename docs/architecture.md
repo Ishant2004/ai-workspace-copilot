@@ -42,6 +42,7 @@ Browser (React)  ──HTTP/SSE──►  FastAPI backend  ──►  Gemini LLM
 | 11 | ReAct agent (in chat) | ✅ Done |
 | 12 | Planning & task execution | ✅ Done |
 | 13 | Long-term user profile memory | ✅ Done |
+| 14 | MCP server | ✅ Done |
 
 ## Current data flow (Phase 0)
 
@@ -419,6 +420,27 @@ The Memory panel renders the facts and Forget clears them.
 > Server-side robustness added alongside this phase: a hard `gemini_request_timeout`
 > (default 60s) on the Gemini client so a hung call fails fast instead of
 > blocking forever — the complement to the client-side Stop button.
+
+## Phase 14: MCP server
+
+So far the tools (Phases 10–12) served *our* agent. **MCP (Model Context
+Protocol)** is an open standard that lets *other* AI apps — Claude Desktop,
+Cursor — discover and call tools over a common wire protocol. Phase 14 exposes
+our capabilities through it.
+
+`backend/mcp_server.py` (built with the `mcp` SDK's `FastMCP`) publishes three
+tools — `search_documents`, `calculate`, `get_current_time` — over **stdio**,
+the transport those clients use to launch and talk to a local server. Crucially,
+the MCP tools call the *same* `services/tools.py` functions the in-app agent
+uses: one implementation, two front doors.
+
+To make it launchable from anywhere (a client sets an arbitrary working
+directory), `config.py` now resolves `.env` by absolute path.
+
+Verified with an MCP stdio client: it listed all three tools, `calculate("6*7")`
+returned `42`, and `search_documents("wifi password")` returned a stored chunk
+via real embeddings + pgvector. See [mcp.md](mcp.md) for Claude Desktop / Cursor
+connection config.
 
 ## Why streaming (SSE)?
 

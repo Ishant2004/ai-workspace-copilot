@@ -5,11 +5,18 @@ local development). Keeping this in one place means the rest of the code never
 touches os.environ directly.
 """
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve .env relative to this file (the backend dir) rather than the current
+# working directory, so the app works no matter where it's launched from — e.g.
+# the MCP server started by Claude Desktop/Cursor with an arbitrary cwd.
+_ENV_FILE = Path(__file__).resolve().parent / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), extra="ignore")
 
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.5-flash-lite"

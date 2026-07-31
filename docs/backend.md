@@ -17,6 +17,7 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `api/threads.py` | Conversation CRUD + persisted streaming chat (Phase 9). |
 | `api/tools.py` | `GET /tools`, `POST /tools/chat` — standalone function-call demo (Phase 10). |
 | `api/profile.py` | `GET /profile`, `DELETE /profile` — long-term user memory (Phase 13). |
+| `mcp_server.py` | Standalone MCP server exposing tools over stdio (Phase 14). |
 | `api/upload.py` | `POST /upload` — PDF ingestion pipeline (Phase 5). |
 | `prompts.py` | Prompt templates (the RAG grounding system prompt). |
 | `services/gemini.py` | Gemini SDK: chat, tokens, single + batch embeddings. |

@@ -24,7 +24,8 @@ single application until it resembles a production AI copilot.
 | 11 | ReAct agent (in chat) | ✅ Done |
 | 12 | Planning & task execution | ✅ Done |
 | 13 | Long-term user profile memory | ✅ Done |
-| 14+ | MCP server, multi-agent, deployment… | ⏳ Planned |
+| 14 | MCP server | ✅ Done |
+| 15+ | External MCP connectors, multi-agent, deployment… | ⏳ Planned |
 
 See [`plan.md`](plan.md) for the full roadmap.
 
@@ -71,5 +72,6 @@ Open http://localhost:5173.
 - [docs/architecture.md](docs/architecture.md) — big-picture mental map
 - [docs/backend.md](docs/backend.md) — backend internals
 - [docs/frontend.md](docs/frontend.md) — frontend internals
+- [docs/mcp.md](docs/mcp.md) — MCP server + how to connect Claude Desktop / Cursor
 
 Docs are updated on every phase.
