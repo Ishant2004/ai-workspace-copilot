@@ -11,5 +11,8 @@ backend/mcp_servers.json
 frontend/node_modules/
 frontend/dist/
 
+# Eval reports (generated artifacts)
+backend/eval/reports/
+
 # Misc
 .DS_Store

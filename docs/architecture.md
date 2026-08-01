@@ -554,6 +554,25 @@ returns 404; and no token → 401.
 > `user_id` columns are added automatically on startup (`ADD COLUMN IF NOT
 > EXISTS`); any pre-auth global data becomes owner-less and is ignored.
 
+## Phase 18: evaluation harness
+
+Everything up to here *builds* capability; this phase *measures* it. Without a
+score, "did that change help RAG?" is unanswerable — so we add a golden-set eval
+that turns retrieval and answer quality into numbers.
+
+`eval/golden.json` holds a known corpus and a set of questions, each labelled
+with the document that should answer it and the fact(s) the answer must contain.
+`eval/harness.py` seeds that corpus under a dedicated **eval user** (id `-1`, so
+it never touches real data), then runs the *actual* RAG path for each question
+and scores three things: **retrieval hit@k** (was the right document in the
+top-k?), **answer accuracy** (did the grounded answer contain the expected
+fact?), and **latency**. `eval/run_eval.py` prints a table and writes a JSON
+report to `eval/reports/`.
+
+This is the baseline the retrieval-improvement phases (query rewriting,
+contextual retrieval) will be measured against — the shift from "feels better" to
+"hit rate went from X to Y." Current baseline: 100% / 100% on the seeded corpus.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

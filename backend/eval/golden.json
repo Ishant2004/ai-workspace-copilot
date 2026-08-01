@@ -1,0 +1,56 @@
+{
+  "documents": [
+    {
+      "title": "Office WiFi",
+      "text": "The office guest WiFi network is 'Acme-Guest' and the password is Sunflower42. It resets on the first Monday of every month."
+    },
+    {
+      "title": "PTO Policy",
+      "text": "Full-time employees receive 20 days of paid time off per year. PTO accrues monthly and unused days can be carried over, up to a maximum of 5 days into the next year."
+    },
+    {
+      "title": "Expense Reimbursement",
+      "text": "Submit expense reports through the finance portal within 30 days of purchase. Reimbursements are paid out on the 15th of the following month. Receipts are required for any expense over 25 dollars."
+    },
+    {
+      "title": "Remote Work",
+      "text": "Employees may work remotely up to 3 days per week. Fully remote arrangements require manager approval and are reviewed every 6 months."
+    },
+    {
+      "title": "Security Onboarding",
+      "text": "All new hires must enable two-factor authentication on their accounts within the first week. Company laptops are encrypted with FileVault and must not be left unlocked in public spaces."
+    }
+  ],
+  "questions": [
+    {
+      "q": "What is the office WiFi password?",
+      "expected_doc_title": "Office WiFi",
+      "expected_answer_contains": ["Sunflower42"]
+    },
+    {
+      "q": "How many PTO days do full-time employees get?",
+      "expected_doc_title": "PTO Policy",
+      "expected_answer_contains": ["20"]
+    },
+    {
+      "q": "How many unused PTO days can I carry over?",
+      "expected_doc_title": "PTO Policy",
+      "expected_answer_contains": ["5"]
+    },
+    {
+      "q": "Within how many days must I submit an expense report?",
+      "expected_doc_title": "Expense Reimbursement",
+      "expected_answer_contains": ["30"]
+    },
+    {
+      "q": "How many days a week can I work remotely?",
+      "expected_doc_title": "Remote Work",
+      "expected_answer_contains": ["3"]
+    },
+    {
+      "q": "What must new hires enable in their first week?",
+      "expected_doc_title": "Security Onboarding",
+      "expected_answer_contains": ["two-factor", "authentication"]
+    }
+  ]
+}

@@ -36,6 +36,9 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `services/mcp_client.py` | Connect to external MCP servers; discover + call their tools (Phase 15). |
 | `services/pdf.py` | Extract text from PDF bytes, per page (pypdf). |
 | `services/chunking.py` | Recursive boundary-aware chunking with overlap. |
+| `eval/harness.py` | Evaluation harness: seed golden corpus, score retrieval + answers (Phase 18). |
+| `eval/run_eval.py` | CLI runner — prints the metrics table, writes a JSON report. |
+| `eval/golden.json` | Golden dataset: known corpus + questions with expected docs/facts. |
 
 ## Endpoints
 
@@ -241,3 +244,28 @@ Backend serves on http://localhost:8000 (docs at `/docs`).
 
 > Note: this project currently requires modern package versions because the
 > local Python is 3.14, which only has wheels for recent releases.
+
+## Evaluation (Phase 18)
+
+We measure RAG quality objectively so later changes can be judged, not guessed.
+
+- `eval/golden.json` — a small known corpus plus questions, each tagged with the
+  document it *should* retrieve and substrings the answer *must* contain.
+- `eval/harness.py` — seeds that corpus under a dedicated **eval user**
+  (`EVAL_USER_ID = -1`, negative so it can never collide with a real account),
+  then for each question measures **retrieval hit@k** (did the expected doc show
+  up in top-k?), **answer accuracy** (does the answer contain the expected
+  facts?), and **latency**. It runs the *real* RAG path (hybrid retrieval + the
+  RAG system prompt), so it scores what users actually get.
+- `eval/run_eval.py` — CLI: prints a per-question table and headline metrics, and
+  writes a timestamped JSON report to `eval/reports/` (git-ignored) for
+  run-to-run comparison.
+
+```bash
+cd backend
+PYTHONPATH="$(pwd)" .venv/bin/python -m eval.run_eval
+```
+
+Baseline on the seeded corpus: retrieval hit@4 **100%**, answer accuracy
+**100%**, ~3.2s/question. This baseline is what Phases 21–22 (query rewriting,
+contextual retrieval) must beat to prove they help.

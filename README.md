@@ -28,10 +28,33 @@ single application until it resembles a production AI copilot.
 | 15 | External MCP connectors | ✅ Done |
 | 16 | Multi-agent system | ✅ Done |
 | 17 | Production deployment ($0) | ✅ Done |
-| 18 | Live web search (DuckDuckGo) | ✅ Done |
+| — | Live web search (DuckDuckGo), in agent + chat | ✅ Done |
 
 🎉 All 17 phases complete, plus live web search — the agent can now pull current
 info (weather, news, GitHub, prices) off the live web via DuckDuckGo (no API key).
+
+### Part 2 — from demo to production-grade ([`plan2.md`](plan2.md))
+
+| Phase | Feature | Status |
+| ----- | ------- | ------ |
+| 18 | Evaluation harness (retrieval + answer metrics) | ✅ Done |
+| 19 | LLM-as-judge + regression gate | ⬜ Planned |
+| 20 | Observability & tracing | ⬜ Planned |
+| 21 | Query rewriting & multi-query retrieval | ⬜ Planned |
+| 22 | Contextual retrieval | ⬜ Planned |
+| 23 | Feedback loop | ⬜ Planned |
+| 24 | Caching (prompt / embedding / response) | ⬜ Planned |
+| 25 | Semantic memory + management UI | ⬜ Planned |
+| 26 | More ingestion formats | ⬜ Planned |
+| 27 | More tools (URL fetch, CSV) | ⬜ Planned |
+| 28 | UX polish | ⬜ Planned |
+| 29 | Security hardening | ⬜ Planned |
+
+**Run the eval** (from `backend/`):
+
+```bash
+PYTHONPATH="$(pwd)" .venv/bin/python -m eval.run_eval
+```
 
 See [`plan.md`](plan.md) for the full roadmap.
 
