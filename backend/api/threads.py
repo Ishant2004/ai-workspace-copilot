@@ -32,6 +32,7 @@ from models import (
 )
 from prompts import (
     build_agent_system_prompt,
+    build_chat_system_prompt,
     build_rag_system_prompt,
     format_context_block,
 )
@@ -135,35 +136,45 @@ def thread_chat(
                         yield _sse({"type": "chunk", "content": event["content"]})
                     else:
                         yield _sse(event)
-            else:
+            elif request.mode == "rag":
+                # RAG stays grounded on the retrieved documents only (no tools):
+                # its whole point is answering *from the user's files*.
                 messages = [
                     Message(role=m["role"], content=m["content"]) for m in window
                 ]
-                system_prompt = user_profile or None
-                if request.mode == "rag":
-                    hits = run_search(user_id, request.content, 4, "hybrid")
-                    yield _sse(
-                        {
-                            "type": "sources",
-                            "sources": [
-                                {
-                                    "id": h["id"],
-                                    "title": h["title"],
-                                    "similarity": h["similarity"],
-                                }
-                                for h in hits
-                            ],
-                        }
-                    )
-                    blocks = [
-                        format_context_block(h["id"], h["title"], h["text"])
-                        for h in hits
-                    ]
-                    system_prompt = user_profile + build_rag_system_prompt(blocks)
-
+                hits = run_search(user_id, request.content, 4, "hybrid")
+                yield _sse(
+                    {
+                        "type": "sources",
+                        "sources": [
+                            {
+                                "id": h["id"],
+                                "title": h["title"],
+                                "similarity": h["similarity"],
+                            }
+                            for h in hits
+                        ],
+                    }
+                )
+                blocks = [
+                    format_context_block(h["id"], h["title"], h["text"])
+                    for h in hits
+                ]
+                system_prompt = user_profile + build_rag_system_prompt(blocks)
                 for piece in stream_chat(messages, system_prompt):
                     reply += piece
                     yield _sse({"type": "chunk", "content": piece})
+            else:
+                # Plain chat: conversational, but it can quietly reach for tools
+                # (web_search, search_documents, calculate…) when the question
+                # needs live or computed facts. Streams token-by-token.
+                system_prompt = user_profile + build_chat_system_prompt()
+                for event in tools.stream_with_tools(
+                    user_id, window, system_prompt
+                ):
+                    if event["type"] == "chunk":
+                        reply += event["content"]
+                    yield _sse(event)
 
             # Persist the assistant's reply now that it's complete.
             if reply:

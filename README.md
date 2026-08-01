@@ -28,8 +28,10 @@ single application until it resembles a production AI copilot.
 | 15 | External MCP connectors | ✅ Done |
 | 16 | Multi-agent system | ✅ Done |
 | 17 | Production deployment ($0) | ✅ Done |
+| 18 | Live web search (DuckDuckGo) | ✅ Done |
 
-🎉 All 17 phases complete.
+🎉 All 17 phases complete, plus live web search — the agent can now pull current
+info (weather, news, GitHub, prices) off the live web via DuckDuckGo (no API key).
 
 See [`plan.md`](plan.md) for the full roadmap.
 

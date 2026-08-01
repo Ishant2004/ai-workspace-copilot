@@ -326,9 +326,11 @@ prompt + tool declarations ─► model
    └─ returns text ─► final answer
 ```
 
-Three tools ship: `calculate` (safe arithmetic via an AST evaluator — never
-`eval`), `get_current_time`, and `search_documents` (runs Phase 7 hybrid search
-over the knowledge base). A `MAX_STEPS` cap prevents runaway loops.
+Four tools ship: `calculate` (safe arithmetic via an AST evaluator — never
+`eval`), `get_current_time`, `search_documents` (runs Phase 7 hybrid search
+over the knowledge base), and `web_search` (live web via DuckDuckGo / `ddgs` —
+no API key, independent of the Gemini quota; `services/web.py`). A `MAX_STEPS`
+cap prevents runaway loops.
 
 `POST /tools/chat` streams the *whole* process as SSE — `tool_call`,
 `tool_result`, then the final answer — and the Tools tab renders it as a

@@ -51,5 +51,12 @@ def get_current_time() -> str:
     return tools.get_current_time()
 
 
+@mcp.tool()
+def web_search(query: str) -> str:
+    """Search the live web (weather, news, GitHub, docs, any current fact) and
+    return the top results as text."""
+    return tools.web_search(query)
+
+
 if __name__ == "__main__":
     mcp.run()  # stdio transport

@@ -76,6 +76,15 @@ def generate(contents, config=None):
     )
 
 
+def generate_stream(contents, config=None):
+    """Low-level, streaming generation over raw Contents. Like `generate` but
+    yields chunks as they arrive, so a tool-aware chat can stream the final
+    answer token-by-token while still seeing any function_call parts."""
+    return _client.models.generate_content_stream(
+        model=settings.gemini_model, contents=contents, config=config
+    )
+
+
 def embed_text(text: str) -> list[float]:
     """Turn a string into an embedding: a fixed-length list of floats that
     captures its meaning. Texts with similar meaning produce vectors that point

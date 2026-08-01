@@ -53,12 +53,33 @@ def build_agent_system_prompt() -> str:
         "Think about what the user needs, then call tools as required:\n"
         "- search_documents: for anything about the user's own documents, "
         "notes, or uploaded files.\n"
+        "- web_search: for current or real-world info not in the user's docs — "
+        "weather, news, GitHub, prices, live facts.\n"
         "- calculate: for arithmetic.\n"
         "- get_current_time: for the current date/time.\n"
         "You may call tools multiple times, using earlier results to decide "
         "the next step. When you have enough information, reply with a clear, "
         "concise final answer. If tools can't help, answer from your own "
         "knowledge and say so."
+    )
+
+
+def build_chat_system_prompt() -> str:
+    """System instruction for plain chat, which can now use tools when helpful.
+
+    Chat stays conversational — it answers directly most of the time — but it may
+    quietly reach for a tool when the question needs live or computed facts:
+    `web_search` for anything current (weather, news, prices, GitHub…),
+    `search_documents` for the user's own files, `calculate`, `get_current_time`.
+    """
+    return (
+        "You are a helpful conversational assistant. Answer directly from your "
+        "own knowledge when you can. When a question needs live or real-world "
+        "information you can't be sure of — weather, news, prices, current "
+        "events, GitHub, etc. — use the web_search tool. Use search_documents "
+        "for the user's own uploaded files, calculate for arithmetic, and "
+        "get_current_time for the current date/time. Keep replies natural and "
+        "concise."
     )
 
 
@@ -73,7 +94,8 @@ def build_planner_prompt(goal: str) -> str:
         "Break the user's goal into a short ordered list of concrete subtasks "
         "(at most 5). Each subtask should be a single, self-contained action, "
         "phrased so it can be executed on its own. Tools available during "
-        "execution: search_documents, calculate, get_current_time. If the goal "
+        "execution: search_documents, web_search, calculate, get_current_time. "
+        "If the goal "
         "is simple, a single step is fine.\n\n"
         f"GOAL: {goal}"
     )

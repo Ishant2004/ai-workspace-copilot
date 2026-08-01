@@ -12,6 +12,7 @@ external apps can search your knowledge base, do math, and get the time.
 | Tool | Description |
 | ---- | ----------- |
 | `search_documents(query)` | Semantic + keyword search over your stored documents (pgvector). |
+| `web_search(query)` | Live web search via DuckDuckGo (weather, news, GitHub, any current fact). |
 | `calculate(expression)` | Safe arithmetic. |
 | `get_current_time()` | Current UTC time. |
 
@@ -39,7 +40,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 }
 ```
 
-Restart Claude Desktop; the three tools appear in the tools menu. (Config loads
+Restart Claude Desktop; the tools appear in the tools menu. (Config loads
 `backend/.env` by absolute path, so it works regardless of the launch
 directory. `search_documents` needs `DATABASE_URL` + `GEMINI_API_KEY` set there.)
 

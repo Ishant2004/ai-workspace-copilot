@@ -29,6 +29,7 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `services/rerank.py` | Cross-encoder reranking with FlashRank (Phase 8). |
 | `services/threads.py` | Conversation persistence: threads/messages, sliding window. |
 | `services/tools.py` | Tool registry + the tool-call loop (backs the agent, Phases 10–11). |
+| `services/web.py` | Live web search via DuckDuckGo (`ddgs`) — no API key. |
 | `services/planner.py` | Plan-and-execute agent: plan → execute (retries) → synthesize (Phase 12). |
 | `services/coordinator.py` | Multi-agent team: planner→retriever→solver→reviewer (Phase 16). |
 | `services/profile.py` | Long-term user memory: extract facts + system-prompt preamble (Phase 13). |
@@ -144,7 +145,7 @@ Returns `{ "total_documents": N }`. Used by the UI badge.
 - `POST /tools/chat` — body `{ message }`. Runs the tool-call loop and streams
   SSE events: `tool_call` `{name, args}`, `tool_result` `{name, result}`,
   `chunk` (final answer), `done`, `error`. Tools: `calculate`,
-  `get_current_time`, `search_documents`.
+  `get_current_time`, `search_documents`, `web_search` (live web).
 
 ### External MCP tools (Phase 15)
 - `GET /mcp/tools?refresh=false` → external tools discovered from the servers in
@@ -167,8 +168,10 @@ system prompt on every turn (chat/RAG/agent). A hard `gemini_request_timeout`
 - `POST /threads/{id}/chat` — body `{ content, mode }` where `mode` is
   `chat` | `rag` | `agent` | `plan`. Persists the user message, replays the last
   `history_window` messages, then:
-  - `chat`: plain streamed reply;
-  - `rag`: retrieves docs, emits a `sources` event, grounds the answer;
+  - `chat`: conversational streamed reply that can quietly call tools
+    (`web_search`, `search_documents`, `calculate`, …) when a question needs
+    live or computed facts — surfacing `tool_call` / `tool_result` events;
+  - `rag`: retrieves docs, emits a `sources` event, grounds the answer (no tools);
   - `agent` (Phase 11): runs the tool loop, emitting `tool_call` / `tool_result`
     events before the streamed answer;
   - `plan` (Phase 12): emits a `plan`, then `step_start` / `tool_call` /

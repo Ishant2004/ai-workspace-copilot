@@ -14,8 +14,8 @@ calling) so the mechanics are visible:
         └─ returns function_call(s) ─► we run them ─► return results ─► model
         └─ returns text ─► done
 
-Tools provided: search_documents (our knowledge base), calculate (safe math),
-get_current_time.
+Tools provided: search_documents (our knowledge base), web_search (live web via
+DuckDuckGo), calculate (safe math), get_current_time.
 """
 
 import ast
@@ -27,6 +27,7 @@ from google.genai import types
 
 from services import gemini, mcp_client
 from services.search import run_search
+from services.web import web_search
 
 MAX_STEPS = 5  # safety cap on tool-call rounds
 
@@ -122,12 +123,31 @@ _DECLARATIONS = [
             required=["query"],
         ),
     ),
+    types.FunctionDeclaration(
+        name="web_search",
+        description=(
+            "Search the live web for current, real-world information — weather, "
+            "news, GitHub, docs, prices, anything the model may not know. Use "
+            "this for anything current or beyond the user's own documents."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "query": types.Schema(
+                    type=types.Type.STRING,
+                    description="The web search query.",
+                )
+            },
+            required=["query"],
+        ),
+    ),
 ]
 
 # Tools that don't need a user context.
 _FUNCTIONS = {
     "get_current_time": get_current_time,
     "calculate": calculate,
+    "web_search": web_search,
 }
 
 
@@ -268,3 +288,66 @@ def run_tool_loop(
         contents.append(types.Content(role="user", parts=result_parts))
 
     yield {"type": "answer", "content": "(stopped after the tool-step limit)"}
+
+
+def stream_with_tools(
+    user_id: int,
+    messages: list[dict],
+    system_instruction: str | None = None,
+) -> Iterator[dict]:
+    """Chat that can *optionally* reach for tools, but streams its final answer
+    token-by-token (unlike run_tool_loop, which returns whole answers).
+
+    Each round is a streaming generation. If the model streams text, we forward
+    it as `chunk` events. If instead it asks for tools, we execute them (emitting
+    `tool_call` / `tool_result`) and loop so it can answer with the results.
+
+    This is what powers plain chat mode once tools are enabled there: a normal
+    turn is a single stream (as fast as before), but the model can now search the
+    web, the knowledge base, etc. when the question calls for it.
+    """
+    contents = [
+        types.Content(
+            role="model" if m["role"] == "assistant" else "user",
+            parts=[types.Part(text=m["content"])],
+        )
+        for m in messages
+    ]
+    config = types.GenerateContentConfig(
+        tools=[types.Tool(function_declarations=all_declarations())],
+        system_instruction=system_instruction,
+    )
+
+    for _ in range(MAX_STEPS):
+        calls = []
+        model_parts = []
+        for chunk in gemini.generate_stream(contents, config):
+            candidate = chunk.candidates[0] if chunk.candidates else None
+            if candidate is None or candidate.content is None:
+                continue
+            for part in candidate.content.parts or []:
+                if getattr(part, "function_call", None):
+                    calls.append(part.function_call)
+                    model_parts.append(part)
+                elif getattr(part, "text", None):
+                    model_parts.append(part)
+                    yield {"type": "chunk", "content": part.text}
+
+        if not calls:
+            # The model answered in text (already streamed) — we're done.
+            return
+
+        # Record the model's tool-call turn, run the tools, then loop.
+        contents.append(types.Content(role="model", parts=model_parts))
+        result_parts = []
+        for call in calls:
+            args = dict(call.args or {})
+            yield {"type": "tool_call", "name": call.name, "args": args}
+            result = dispatch(call.name, args, user_id)
+            yield {"type": "tool_result", "name": call.name, "result": result}
+            result_parts.append(
+                types.Part.from_function_response(
+                    name=call.name, response={"result": result}
+                )
+            )
+        contents.append(types.Content(role="user", parts=result_parts))
