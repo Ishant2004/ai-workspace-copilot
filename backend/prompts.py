@@ -83,6 +83,30 @@ def build_chat_system_prompt() -> str:
     )
 
 
+def build_judge_prompt(question: str, context: str, answer: str) -> str:
+    """Rubric prompt for LLM-as-judge grading (Phase 19).
+
+    Substring checks catch whether a fact is present; they can't tell if the
+    answer is *grounded* (not hallucinated) or actually *addresses* the question.
+    We ask a separate model call to grade both on a 1–5 scale, with a rationale
+    so a low score is explainable rather than a mystery number.
+    """
+    return (
+        "You are a strict evaluator grading an AI assistant's answer. Use the "
+        "retrieved context as the source of truth.\n\n"
+        "Grade TWO things on a 1-5 integer scale:\n"
+        "- faithfulness: is every claim in the answer supported by the context? "
+        "5 = fully grounded, 1 = mostly made up / contradicts the context. If "
+        "the context is empty and the answer invents specifics, score low.\n"
+        "- relevance: does the answer actually address the question? "
+        "5 = directly and completely, 1 = off-topic or non-answer.\n\n"
+        "Give a one-sentence rationale.\n\n"
+        f"QUESTION:\n{question}\n\n"
+        f"RETRIEVED CONTEXT:\n{context or '(no context retrieved)'}\n\n"
+        f"ANSWER:\n{answer}"
+    )
+
+
 def build_planner_prompt(goal: str) -> str:
     """Ask the model to break a goal into a short ordered list of subtasks.
 

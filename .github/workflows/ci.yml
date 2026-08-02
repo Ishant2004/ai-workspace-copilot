@@ -39,3 +39,28 @@ jobs:
         env:
           GEMINI_API_KEY: dummy-key-for-ci
         run: python -c "import main; print('backend import OK')"
+
+  # Phase 19: RAG quality gate. Runs the eval harness + LLM-judge and fails the
+  # build if metrics drop below threshold. Only runs when the repo has the
+  # required secrets set (add DATABASE_URL + GEMINI_API_KEY in repo settings);
+  # skips cleanly otherwise so forks/PRs without secrets aren't blocked.
+  eval-gate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Run RAG eval gate
+        if: ${{ env.DATABASE_URL != '' && env.GEMINI_API_KEY != '' }}
+        run: PYTHONPATH="$(pwd)" python -m eval.run_eval
+      - name: Skip note
+        if: ${{ env.DATABASE_URL == '' || env.GEMINI_API_KEY == '' }}
+        run: echo "Skipping eval gate: DATABASE_URL / GEMINI_API_KEY secrets not set."

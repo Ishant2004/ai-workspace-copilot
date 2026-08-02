@@ -573,6 +573,22 @@ This is the baseline the retrieval-improvement phases (query rewriting,
 contextual retrieval) will be measured against — the shift from "feels better" to
 "hit rate went from X to Y." Current baseline: 100% / 100% on the seeded corpus.
 
+## Phase 19: LLM-as-judge & regression gate
+
+Substring checks (Phase 18) verify a fact is *present*; they can't judge whether
+an answer is *grounded* in the retrieved context or actually *addresses* the
+question. A model can. `eval/judge.py` adds a second Gemini call that grades each
+answer 1–5 on **faithfulness** and **relevance** (with a rationale), via
+structured JSON output so the scores come back as clean numbers.
+
+The runner then becomes a **gate**: it exits non-zero if retrieval hit rate,
+answer accuracy, faithfulness, or relevance fall below thresholds — so a
+regression fails the run, and (via the `eval-gate` CI job) the build. The gate
+lives in a pure `check_gate()` function that's unit-tested without any API calls.
+Because the free tier caps at ~15 req/min and a judged run makes two calls per
+question, the harness uses long backoffs to ride out 429 cooldowns. Baseline:
+faithfulness 5.0/5, relevance 5.0/5, gate PASSED.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

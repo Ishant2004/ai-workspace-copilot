@@ -244,8 +244,8 @@ Rate limiting, abuse prevention, injection defense, token lifecycle, auditing.
 
 ## Summary of Part 2 milestones
 
-- ⬜ Objective RAG evaluation (retrieval + answer metrics)
-- ⬜ LLM-as-judge quality gate in CI
+- ✅ Objective RAG evaluation (retrieval + answer metrics)
+- ✅ LLM-as-judge quality gate in CI
 - ⬜ Per-turn tracing & token accounting
 - ⬜ Query rewriting + multi-query retrieval
 - ⬜ Contextual retrieval at ingestion

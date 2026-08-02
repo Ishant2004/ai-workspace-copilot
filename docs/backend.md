@@ -37,7 +37,8 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `services/pdf.py` | Extract text from PDF bytes, per page (pypdf). |
 | `services/chunking.py` | Recursive boundary-aware chunking with overlap. |
 | `eval/harness.py` | Evaluation harness: seed golden corpus, score retrieval + answers (Phase 18). |
-| `eval/run_eval.py` | CLI runner — prints the metrics table, writes a JSON report. |
+| `eval/judge.py` | LLM-as-judge: grades faithfulness + relevance 1–5 (Phase 19). |
+| `eval/run_eval.py` | CLI runner + regression gate — prints metrics, writes a report, fails on regression. |
 | `eval/golden.json` | Golden dataset: known corpus + questions with expected docs/facts. |
 
 ## Endpoints
@@ -263,9 +264,31 @@ We measure RAG quality objectively so later changes can be judged, not guessed.
 
 ```bash
 cd backend
-PYTHONPATH="$(pwd)" .venv/bin/python -m eval.run_eval
+PYTHONPATH="$(pwd)" .venv/bin/python -m eval.run_eval            # full, judge on
+PYTHONPATH="$(pwd)" .venv/bin/python -m eval.run_eval --no-judge # faster
 ```
 
 Baseline on the seeded corpus: retrieval hit@4 **100%**, answer accuracy
-**100%**, ~3.2s/question. This baseline is what Phases 21–22 (query rewriting,
+**100%**, ~3s/question. This baseline is what Phases 21–22 (query rewriting,
 contextual retrieval) must beat to prove they help.
+
+### LLM-as-judge + regression gate (Phase 19)
+
+Substring checks tell you a fact is *present*; they can't tell you the answer is
+*grounded* (not hallucinated) or actually *addresses* the question. `eval/judge.py`
+adds a second model call that grades each answer **1–5 on faithfulness and
+relevance** (with a one-line rationale), using structured JSON output so we get
+clean numbers. Averages land in the report.
+
+`run_eval.py` then acts as a **regression gate**: it exits non-zero if any metric
+falls below a threshold, so a bad change fails the run. Defaults: retrieval ≥
+0.8, answer ≥ 0.8, faithfulness ≥ 4.0, relevance ≥ 4.0 — overridable via
+`EVAL_MIN_RETRIEVAL`, `EVAL_MIN_ANSWER`, `EVAL_MIN_FAITHFULNESS`,
+`EVAL_MIN_RELEVANCE`. `check_gate(report, judge)` is a pure function (unit-tested
+without API calls). Baseline judged run: faithfulness **5.0/5**, relevance
+**5.0/5**, gate **PASSED**.
+
+CI runs this gate (`.github/workflows/ci.yml`, `eval-gate` job) when the repo has
+`DATABASE_URL` + `GEMINI_API_KEY` secrets set, and skips cleanly otherwise. Note
+the free tier caps at ~15 requests/min and a judged run makes 2 calls/question,
+so the harness uses long backoffs to ride out 429 cooldowns.

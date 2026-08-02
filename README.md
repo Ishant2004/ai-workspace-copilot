@@ -38,7 +38,7 @@ info (weather, news, GitHub, prices) off the live web via DuckDuckGo (no API key
 | Phase | Feature | Status |
 | ----- | ------- | ------ |
 | 18 | Evaluation harness (retrieval + answer metrics) | ✅ Done |
-| 19 | LLM-as-judge + regression gate | ⬜ Planned |
+| 19 | LLM-as-judge + regression gate | ✅ Done |
 | 20 | Observability & tracing | ⬜ Planned |
 | 21 | Query rewriting & multi-query retrieval | ⬜ Planned |
 | 22 | Contextual retrieval | ⬜ Planned |
