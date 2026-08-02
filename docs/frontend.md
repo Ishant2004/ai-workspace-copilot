@@ -122,10 +122,13 @@ The Chat tab is a two-pane layout: a **sidebar** listing conversations (with
   - *Team* (Phase 16) answers receive `agent_start` / `agent_message` events,
     rendered as violet **role cards** (Planner, Retriever, Solver, Reviewer)
     above the final answer bubble.
+  - *Every* mode ends with a `trace` event (Phase 20), rendered as a collapsible
+    **`TraceView`** under the answer: "⏱ 3.1s · ~180 tok · N steps", expanding to
+    a per-span timeline (retrieval, each tool call, generation) with mini bars.
 
-All streaming shares one SSE reader (`streamSse` in `api.ts`) with an optional
-`onSources` handler. Messages are stored as `DisplayMessage` (a `Message` plus
-an optional `sources` array).
+All streaming shares one SSE reader (`streamSse` in `api.ts`) with optional
+`onSources` / `onTrace` handlers. Messages are stored as `DisplayMessage` (a
+`Message` plus optional `sources`, `steps`, `plan`, `agents`, and `trace`).
 
 > Note: the agent (Phase 11) reuses the SSE reader's optional `onToolCall` /
 > `onToolResult` handlers. The standalone Tools tab from Phase 10 was folded

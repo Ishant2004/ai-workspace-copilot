@@ -589,6 +589,19 @@ Because the free tier caps at ~15 req/min and a judged run makes two calls per
 question, the harness uses long backoffs to ride out 429 cooldowns. Baseline:
 faithfulness 5.0/5, relevance 5.0/5, gate PASSED.
 
+## Phase 20: observability & tracing
+
+Phases 18–19 measure quality offline; this phase makes *every live turn*
+inspectable. `services/tracing.py` defines a `Trace` that collects **spans** —
+named, timed sub-steps: `retrieval` (with hit count), one `tool:<name>` per tool
+call (with result size), and `generation` — plus a cheap local **token estimate**
+(~4 chars/token, so tracing never adds an API call). The chat endpoint builds a
+trace per turn, records spans as work happens, persists it to a `traces` table,
+and emits it as a final `trace` SSE event. The UI renders it as a collapsible
+timeline under the answer ("⏱ 3.1s · ~180 tok"), turning "that felt slow" into
+"generation was 2.6s of the 3.1s". `GET /threads/{id}/traces` returns the
+history. Tracing is wrapped so it can never break the chat itself.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

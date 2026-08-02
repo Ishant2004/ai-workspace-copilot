@@ -16,6 +16,7 @@ of it to the model each turn.
 """
 
 import json
+import time
 from collections.abc import Iterator
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -36,7 +37,7 @@ from prompts import (
     build_rag_system_prompt,
     format_context_block,
 )
-from services import coordinator, planner, profile, threads, tools
+from services import coordinator, planner, profile, threads, tools, tracing
 from services.gemini import stream_chat
 from services.search import run_search
 
@@ -68,6 +69,16 @@ def get_messages(
     return [ThreadMessage(**m) for m in threads.get_messages(thread_id)]
 
 
+@router.get("/threads/{thread_id}/traces")
+def get_traces(
+    thread_id: int, user_id: int = Depends(current_user_id)
+) -> list[dict]:
+    """Recent per-turn traces for this thread (Phase 20 observability)."""
+    if not threads.thread_exists(thread_id, user_id):
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return tracing.list_thread_traces(thread_id, user_id)
+
+
 @router.delete("/threads/{thread_id}")
 def delete_thread(
     thread_id: int, user_id: int = Depends(current_user_id)
@@ -96,6 +107,9 @@ def thread_chat(
 
     def event_stream() -> Iterator[str]:
         reply = ""
+        # Phase 20: a trace collects the timed spans of this turn (retrieval,
+        # each tool call, generation) so the UI can show a little timeline.
+        trace = tracing.Trace(user_id, thread_id, request.mode)
         try:
             # Replay only the recent window to the model (bounded prompt/cost).
             window = threads.get_recent_messages(
@@ -105,44 +119,21 @@ def thread_chat(
             # system prompt so the assistant remembers across conversations.
             user_profile = profile.preamble(user_id)
 
-            if request.mode == "team":
-                # Phase 16: multi-agent pipeline. Each sub-agent's contribution
-                # streams as agent_start/agent_message; the reviewer's output is
-                # the final answer (an `answer` event → chunk).
-                for event in coordinator.run_team(user_id, request.content):
-                    if event["type"] == "answer":
-                        reply += event["content"]
-                        yield _sse({"type": "chunk", "content": event["content"]})
-                    else:
-                        yield _sse(event)
-            elif request.mode == "plan":
-                # Phase 12: plan-and-execute. Emit the plan and each step's
-                # progress; the synthesized final answer arrives as `answer`.
-                for event in planner.run_plan(user_id, request.content):
-                    if event["type"] == "answer":
-                        reply += event["content"]
-                        yield _sse({"type": "chunk", "content": event["content"]})
-                    else:
-                        yield _sse(event)
-            elif request.mode == "agent":
-                # Phase 11: the agent decides which tools to call, looping until
-                # it can answer. Surface each tool call/result; the final answer
-                # arrives as `answer` events which we stream as chunks.
-                for event in tools.run_tool_loop(
-                    user_id, window, user_profile + build_agent_system_prompt()
-                ):
-                    if event["type"] == "answer":
-                        reply += event["content"]
-                        yield _sse({"type": "chunk", "content": event["content"]})
-                    else:
-                        yield _sse(event)
-            elif request.mode == "rag":
+            if request.mode == "rag":
                 # RAG stays grounded on the retrieved documents only (no tools):
-                # its whole point is answering *from the user's files*.
+                # its whole point is answering *from the user's files*. Time
+                # retrieval and generation as separate spans.
                 messages = [
                     Message(role=m["role"], content=m["content"]) for m in window
                 ]
+                r_start = time.perf_counter()
                 hits = run_search(user_id, request.content, 4, "hybrid")
+                trace.add(
+                    "retrieval",
+                    round((time.perf_counter() - r_start) * 1000),
+                    strategy="hybrid",
+                    hits=len(hits),
+                )
                 yield _sse(
                     {
                         "type": "sources",
@@ -161,20 +152,66 @@ def thread_chat(
                     for h in hits
                 ]
                 system_prompt = user_profile + build_rag_system_prompt(blocks)
+                g_start = time.perf_counter()
                 for piece in stream_chat(messages, system_prompt):
                     reply += piece
                     yield _sse({"type": "chunk", "content": piece})
+                trace.add(
+                    "generation",
+                    round((time.perf_counter() - g_start) * 1000),
+                    mode="rag",
+                )
             else:
-                # Plain chat: conversational, but it can quietly reach for tools
-                # (web_search, search_documents, calculate…) when the question
-                # needs live or computed facts. Streams token-by-token.
-                system_prompt = user_profile + build_chat_system_prompt()
-                for event in tools.stream_with_tools(
-                    user_id, window, system_prompt
-                ):
-                    if event["type"] == "chunk":
+                # team / plan / agent / chat all yield an event stream. Pick the
+                # right producer, then run one loop that (a) streams the events,
+                # (b) times each tool call as a span, (c) accumulates the reply.
+                #   - team (Phase 16): agent_start/agent_message per sub-agent.
+                #   - plan (Phase 12): plan + step_start/step_result per step.
+                #   - agent (Phase 11): tool_call/tool_result, answer → chunk.
+                #   - chat: tool-aware, streamed token-by-token.
+                if request.mode == "team":
+                    events = coordinator.run_team(user_id, request.content)
+                elif request.mode == "plan":
+                    events = planner.run_plan(user_id, request.content)
+                elif request.mode == "agent":
+                    events = tools.run_tool_loop(
+                        user_id,
+                        window,
+                        user_profile + build_agent_system_prompt(),
+                    )
+                else:  # chat
+                    events = tools.stream_with_tools(
+                        user_id,
+                        window,
+                        user_profile + build_chat_system_prompt(),
+                    )
+
+                pending: dict[str, float] = {}
+                g_start = time.perf_counter()
+                for event in events:
+                    etype = event["type"]
+                    if etype == "tool_call":
+                        pending[event["name"]] = time.perf_counter()
+                    elif etype == "tool_result":
+                        started = pending.pop(event["name"], None)
+                        if started is not None:
+                            trace.add(
+                                f"tool:{event['name']}",
+                                round((time.perf_counter() - started) * 1000),
+                                result_chars=len(event.get("result", "")),
+                            )
+                    # `answer` events (agent/plan/team) and `chunk` events (chat)
+                    # both carry text and become chunks that accumulate the reply.
+                    if etype in ("answer", "chunk"):
                         reply += event["content"]
-                    yield _sse(event)
+                        yield _sse({"type": "chunk", "content": event["content"]})
+                    else:
+                        yield _sse(event)
+                trace.add(
+                    "generation",
+                    round((time.perf_counter() - g_start) * 1000),
+                    mode=request.mode,
+                )
 
             # Persist the assistant's reply now that it's complete.
             if reply:
@@ -182,6 +219,17 @@ def thread_chat(
                 # Phase 13: learn durable facts from this turn, in the
                 # background so it never delays the response.
                 profile.extract_in_background(user_id, request.content)
+
+            # Finalise the trace: estimate tokens, persist, and send to the UI.
+            trace.set_tokens(
+                tracing.estimate_tokens(user_profile + request.content),
+                tracing.estimate_tokens(reply),
+            )
+            try:
+                tracing.save_trace(trace)
+            except Exception:  # tracing must never break the chat itself
+                pass
+            yield _sse({"type": "trace", "trace": trace.summary()})
             yield _sse({"type": "done"})
         except Exception as exc:
             yield _sse({"type": "error", "content": str(exc)})

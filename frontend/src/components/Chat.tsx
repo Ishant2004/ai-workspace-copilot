@@ -11,6 +11,7 @@ import {
   type Message,
   type SearchHit,
   type Thread,
+  type Trace,
 } from "../services/api";
 
 // One agent tool step (Phase 11): a tool call and, once run, its result.
@@ -29,6 +30,7 @@ type DisplayMessage = Message & {
   steps?: Step[];
   plan?: PlanStep[];
   agents?: AgentTurn[];
+  trace?: Trace; // Phase 20: per-turn timing + tokens
 };
 
 // Phase 0: streaming chat. Phase 4: RAG grounding. Phase 9: persistent threads.
@@ -227,6 +229,7 @@ export default function Chat() {
           return { ...m, steps: attachToolResult(m.steps ?? [], result) };
         });
       },
+      onTrace: (trace) => updateAssistant((m) => ({ ...m, trace })),
       onDone: () => {},
       onError: (msg) =>
         updateAssistant((m) => ({
@@ -400,6 +403,7 @@ export default function Chat() {
               {m.sources && m.sources.length > 0 && (
                 <Sources hits={m.sources} />
               )}
+              {m.trace && <TraceView trace={m.trace} />}
             </div>
           ))}
           <div ref={bottomRef} />
@@ -546,6 +550,42 @@ function Steps({ steps }: { steps: Step[] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+// Per-turn trace (Phase 20): a collapsible timeline of the timed spans that made
+// up this turn (retrieval, tool calls, generation), plus a token estimate. It
+// turns "that felt slow" into "generation was 2.6s of the 3.1s".
+function TraceView({ trace }: { trace: Trace }) {
+  const total = trace.total_ms || 1;
+  const tokens = trace.tokens?.total_est;
+  return (
+    <details className="mt-1 text-left">
+      <summary className="cursor-pointer list-none text-xs text-neutral-400 hover:text-neutral-600">
+        ⏱ {(trace.total_ms / 1000).toFixed(2)}s
+        {tokens ? ` · ~${tokens} tok` : ""} · {trace.spans.length} steps
+      </summary>
+      <div className="mt-1 space-y-1 rounded-lg border border-neutral-200 bg-neutral-50 p-2">
+        {trace.spans.map((s, i) => (
+          <div key={i} className="text-xs">
+            <div className="flex justify-between text-neutral-600">
+              <span className="font-mono">{s.name}</span>
+              <span className="tabular-nums text-neutral-500">
+                {s.duration_ms}ms
+              </span>
+            </div>
+            <div className="mt-0.5 h-1.5 w-full rounded-full bg-neutral-200">
+              <div
+                className="h-1.5 rounded-full bg-blue-400"
+                style={{
+                  width: `${Math.max(2, (s.duration_ms / total) * 100)}%`,
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 

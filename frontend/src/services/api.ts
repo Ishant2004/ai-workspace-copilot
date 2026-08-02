@@ -266,6 +266,22 @@ interface StreamHandlers {
   // Only the multi-agent team emits these (Phase 16).
   onAgentStart?: (role: string) => void;
   onAgentMessage?: (role: string, content: string) => void;
+  // Per-turn trace: timed spans + token estimate (Phase 20).
+  onTrace?: (trace: Trace) => void;
+}
+
+// One timed sub-step of a turn (retrieval, a tool call, generation).
+export interface TraceSpan {
+  name: string;
+  duration_ms: number;
+  meta?: Record<string, unknown>;
+}
+
+export interface Trace {
+  mode: string;
+  total_ms: number;
+  tokens?: { prompt_est?: number; response_est?: number; total_est?: number };
+  spans: TraceSpan[];
 }
 
 // Shared SSE reader used by all streaming endpoints. It POSTs the body, then
@@ -340,6 +356,7 @@ async function streamSse(
           handlers.onAgentStart?.(payload.role);
         else if (payload.type === "agent_message")
           handlers.onAgentMessage?.(payload.role, payload.content);
+        else if (payload.type === "trace") handlers.onTrace?.(payload.trace);
         else if (payload.type === "done") handlers.onDone();
         else if (payload.type === "error") handlers.onError(payload.content);
       }

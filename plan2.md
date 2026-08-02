@@ -246,7 +246,7 @@ Rate limiting, abuse prevention, injection defense, token lifecycle, auditing.
 
 - ✅ Objective RAG evaluation (retrieval + answer metrics)
 - ✅ LLM-as-judge quality gate in CI
-- ⬜ Per-turn tracing & token accounting
+- ✅ Per-turn tracing & token accounting
 - ⬜ Query rewriting + multi-query retrieval
 - ⬜ Contextual retrieval at ingestion
 - ⬜ User feedback flywheel

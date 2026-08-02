@@ -36,6 +36,7 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `services/mcp_client.py` | Connect to external MCP servers; discover + call their tools (Phase 15). |
 | `services/pdf.py` | Extract text from PDF bytes, per page (pypdf). |
 | `services/chunking.py` | Recursive boundary-aware chunking with overlap. |
+| `services/tracing.py` | Per-turn trace: timed spans + token estimate, persisted (Phase 20). |
 | `eval/harness.py` | Evaluation harness: seed golden corpus, score retrieval + answers (Phase 18). |
 | `eval/judge.py` | LLM-as-judge: grades faithfulness + relevance 1–5 (Phase 19). |
 | `eval/run_eval.py` | CLI runner + regression gate — prints metrics, writes a report, fails on regression. |
@@ -182,7 +183,10 @@ system prompt on every turn (chat/RAG/agent). A hard `gemini_request_timeout`
     `tool_result` / `step_result` per step, then the synthesized `answer`.
   - `team` (Phase 16): emits `agent_start` / `agent_message` per sub-agent
     (Planner, Retriever, Solver, Reviewer), then the final `answer`.
-  The assistant reply is persisted; new threads are auto-titled.
+  Every mode ends with a `trace` event (Phase 20): the turn's timed spans +
+  token estimate. The assistant reply is persisted; new threads are auto-titled.
+- `GET /threads/{id}/traces` → recent per-turn traces for the thread
+  (`[{id, mode, total_ms, spans, tokens, created_at}]`), owner-scoped.
 
 > Requires `DATABASE_URL` (a Neon Postgres URL). The table + `vector` extension
 > are created automatically on startup. Embedding dimension must match
