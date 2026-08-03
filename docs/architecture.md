@@ -620,6 +620,24 @@ same-topic distractors; at k=1 multi-query recovers ambiguous questions that
 single-query misses (measured +12% in one run). This is the payoff of building
 the eval harness first — the improvement is a number, not a vibe.
 
+## Phase 22: contextual retrieval
+
+Phase 21 improved the *query* side; this improves the *document* side. When a long
+document is chunked, each chunk is embedded in isolation, so "It increased 3%
+quarter over quarter" embeds with no hint of which metric or company — and
+retrieval misses it. `services/context.py` asks the model for a one-sentence
+context that situates each chunk in its document (Anthropic's "contextual
+retrieval"); the ingestion pipeline embeds the context-prepended text but stores
+the **original** chunk, so only the vector benefits while citations stay clean.
+
+It's opt-in (`CONTEXTUAL_RETRIEVAL`, off by default) because it costs one LLM call
+per chunk at ingestion — expensive on the free tier — with a chunk cap and a
+heuristic fallback so ingestion never breaks. `eval/compare_contextual()` proves
+it: over a handbook whose passages are ambiguous alone, raw-embedded vector
+retrieval hits 50% @1 and contextualized hits 75% (+25%). The context generation
+isn't perfect (one chunk got a vague label and stayed a miss), which is exactly
+the kind of thing the eval surfaces instead of hiding.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

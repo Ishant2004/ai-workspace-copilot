@@ -5,6 +5,7 @@ Usage (from the backend/ directory):
     .venv/bin/python -m eval.run_eval            # full run, LLM-judge on
     .venv/bin/python -m eval.run_eval --no-judge # faster: skip the judge
     .venv/bin/python -m eval.run_eval --compare  # Phase 21: single vs multi-query
+    .venv/bin/python -m eval.run_eval --compare-context  # Phase 22: raw vs contextual
 
 Requires DATABASE_URL and GEMINI_API_KEY (loaded from backend/.env). Prints a
 per-question table and headline metrics, writes a JSON report to eval/reports/,
@@ -18,7 +19,12 @@ Thresholds can be overridden with env vars: EVAL_MIN_RETRIEVAL, EVAL_MIN_ANSWER
 import os
 import sys
 
-from eval.harness import compare_retrieval, evaluate, save_report
+from eval.harness import (
+    compare_contextual,
+    compare_retrieval,
+    evaluate,
+    save_report,
+)
 
 # Baselines a healthy pipeline must clear. Set below the current 100%/5.0 so
 # normal model variance doesn't fail the gate, but a real regression does.
@@ -107,7 +113,45 @@ def run_compare() -> None:
     print(f"\nReport written to {path}")
 
 
+def run_compare_context() -> None:
+    """Phase 22: show retrieval hit@k for raw vs contextual chunk embeddings."""
+    print("Comparing raw vs contextual chunk embeddings (vector, k=1)...\n")
+    report = compare_contextual(k=1)
+
+    widths = [46, 8, 12]
+    print(_fmt_row(["Question", "Raw", "Contextual"], widths))
+    print(_fmt_row(["-" * w for w in widths], widths))
+    for r in report["results"]:
+        print(
+            _fmt_row(
+                [
+                    r["question"][:45],
+                    "hit" if r["raw_hit"] else "MISS",
+                    "hit" if r["contextual_hit"] else "MISS",
+                ],
+                widths,
+            )
+        )
+
+    print("\nContext lines the model generated:")
+    for line in report["context_lines"]:
+        print(f"  - {line}")
+
+    print()
+    print(f"Chunks              : {report['num_chunks']}")
+    print(f"Questions           : {report['num_questions']}")
+    print(f"Raw hit@{report['k']}          : {report['raw_hit_rate']:.0%}")
+    print(f"Contextual hit@{report['k']}   : {report['contextual_hit_rate']:.0%}")
+    print(f"Delta               : {report['delta']:+.0%}")
+
+    path = save_report(report)
+    print(f"\nReport written to {path}")
+
+
 def main() -> None:
+    if "--compare-context" in sys.argv:
+        run_compare_context()
+        return
     if "--compare" in sys.argv:
         run_compare()
         return

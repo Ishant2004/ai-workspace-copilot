@@ -1,0 +1,31 @@
+{
+  "doc_title": "Acme Employee Handbook",
+  "chunks": [
+    {
+      "title": "vacation",
+      "text": "The annual allowance is 20 days, accrued monthly, and up to 5 unused days carry into the next year."
+    },
+    {
+      "title": "sick",
+      "text": "The annual allowance is 10 days; unused days are forfeited at the end of the year and do not carry over."
+    },
+    {
+      "title": "remote",
+      "text": "This is permitted up to 3 days per week; a fully flexible arrangement requires manager sign-off."
+    },
+    {
+      "title": "office",
+      "text": "Attendance on-site is expected at least 2 days each week for every team member."
+    },
+    {
+      "title": "expenses",
+      "text": "Claims must be filed within 30 days; payouts are issued on the 15th of the following month."
+    }
+  ],
+  "questions": [
+    { "q": "How many paid vacation days do employees get?", "expected": "vacation" },
+    { "q": "How many sick days are provided each year?", "expected": "sick" },
+    { "q": "How many days a week can I work remotely?", "expected": "remote" },
+    { "q": "How often must I be physically present in the office?", "expected": "office" }
+  ]
+}

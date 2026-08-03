@@ -83,6 +83,28 @@ def build_chat_system_prompt() -> str:
     )
 
 
+def build_context_prompt(doc_title: str, doc_text: str, chunk: str) -> str:
+    """Situate a chunk within its document for better retrieval (Phase 22).
+
+    A chunk pulled out of a long document often loses what it's *about* — "It
+    increased 3%" says nothing about which metric, which company, which year. We
+    ask the model to write one short sentence that puts the chunk back in
+    context; prepending that to the chunk before embedding means the embedding
+    captures the topic, not just the isolated words (Anthropic's "contextual
+    retrieval").
+    """
+    return (
+        "You situate a chunk within its document to improve search retrieval.\n"
+        "Given the whole document and one chunk from it, write ONE short "
+        "sentence (max ~25 words) stating what the chunk is about in the "
+        "document's context — name the topic/section and any entity or time it "
+        "refers to. Output only that sentence, no preamble or quotes.\n\n"
+        f"DOCUMENT TITLE: {doc_title}\n\n"
+        f"DOCUMENT:\n{doc_text}\n\n"
+        f"CHUNK:\n{chunk}"
+    )
+
+
 def build_rewrite_prompt(question: str, history: str, n: int) -> str:
     """Ask the model to expand a question into standalone search queries (Phase 21).
 

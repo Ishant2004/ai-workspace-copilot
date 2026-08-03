@@ -38,6 +38,7 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `services/chunking.py` | Recursive boundary-aware chunking with overlap. |
 | `services/tracing.py` | Per-turn trace: timed spans + token estimate, persisted (Phase 20). |
 | `services/rewrite.py` | Query rewriting: expand a question into standalone/paraphrased queries (Phase 21). |
+| `services/context.py` | Contextual retrieval: model-written context line per chunk before embedding (Phase 22). |
 | `eval/harness.py` | Evaluation harness: seed golden corpus, score retrieval + answers (Phase 18). |
 | `eval/judge.py` | LLM-as-judge: grades faithfulness + relevance 1–5 (Phase 19). |
 | `eval/run_eval.py` | CLI runner + regression gate — prints metrics, writes a report, fails on regression. |
@@ -213,11 +214,13 @@ Response:
 ```
 Pipeline (Phase 6): `services/pdf.extract_pages` (per page) →
 `services/chunking.recursive_chunk` per page (`chunk_size`/`chunk_overlap` from
-config) → `services/gemini.embed_texts` (batched) → `db.insert_documents`
-(bulk, with metadata). Each chunk becomes a normal document row carrying
-`metadata` = `{source, filename, page, chunk_index, uploaded_at}`, so it's
-immediately searchable and RAG-usable and traceable to a page. Returns 400 for
-non-PDFs or PDFs with no extractable text (e.g. scanned images).
+config) → *(Phase 22, optional)* `services/context.contextualize_all` →
+`services/gemini.embed_texts` (batched) → `db.insert_documents` (bulk, with
+metadata). Each chunk becomes a normal document row carrying `metadata` =
+`{source, filename, page, chunk_index, uploaded_at}` (plus `context` when
+contextual retrieval is on), so it's immediately searchable and RAG-usable and
+traceable to a page. Returns 400 for non-PDFs or PDFs with no extractable text
+(e.g. scanned images).
 
 ### Metadata (Phase 6)
 `documents` has a `metadata JSONB` column. Search and list responses include a
@@ -272,6 +275,7 @@ cd backend
 PYTHONPATH="$(pwd)" .venv/bin/python -m eval.run_eval            # full, judge on
 PYTHONPATH="$(pwd)" .venv/bin/python -m eval.run_eval --no-judge # faster
 PYTHONPATH="$(pwd)" .venv/bin/python -m eval.run_eval --compare  # single vs multi-query
+PYTHONPATH="$(pwd)" .venv/bin/python -m eval.run_eval --compare-context  # raw vs contextual
 ```
 
 Baseline on the seeded corpus: retrieval hit@4 **100%**, answer accuracy
@@ -320,3 +324,22 @@ hybrid misses ambiguous questions that multi-query recovers: a measured lift of
 **75% → 88% (+12%)** in one run (rewriting is stochastic, so the delta varies run
 to run but stays positive). `evaluate()` itself still uses single-query hybrid as
 the stable retrieval floor; `compare` is where the Phase 21 gain is shown.
+
+### Contextual retrieval (Phase 22)
+
+A chunk pulled from a long document loses what it's *about* ("It increased 3%" —
+of what?). `services/context.py` asks the model for a one-sentence context that
+situates each chunk in its document; the upload pipeline embeds that
+context-prepended text but **stores the original chunk** (so citations and
+keyword search stay clean, only the vector sees the context). It's opt-in via
+`CONTEXTUAL_RETRIEVAL` (default off — it's one LLM call *per chunk* at ingestion,
+slow on the free tier) with a `CONTEXTUAL_MAX_CHUNKS` cap, and falls back to a
+heuristic (`"From <title>."`) if the call fails, so ingestion never breaks.
+
+`eval/compare_contextual()` (`--compare-context`) proves the effect: over a
+chunked handbook whose passages are ambiguous alone (two sections both starting
+"The annual allowance is N days…"), it embeds the chunks raw vs contextualized
+and compares **vector** hit@1. Measured **50% → 75% (+25%)** in one run. Honest
+caveat: context quality varies — in that run the model labelled the sick-leave
+chunk "annual leave", so that question stayed a miss; the technique helps on
+average, it isn't magic.

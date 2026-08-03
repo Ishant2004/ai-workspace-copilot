@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from api.deps import current_user_id
 from config import settings
 from models import UploadResponse
-from services import db
+from services import context, db
 from services.chunking import recursive_chunk
 from services.gemini import embed_texts
 from services.pdf import extract_pages
@@ -72,16 +72,34 @@ async def upload_pdf(
             detail="No extractable text found (the PDF may be scanned images).",
         )
 
-    # 3. Embed every chunk in one batched call.
-    embeddings = embed_texts(chunk_texts)
+    # 3. Optionally contextualise each chunk (Phase 22): prepend a model-written
+    #    sentence situating it in the document, and embed *that*. We still store
+    #    the original chunk text — only the embedding sees the context. Skipped
+    #    above the cap (per-chunk LLM calls are costly on the free tier).
+    contexts: list[str | None] = [None] * len(chunk_texts)
+    if settings.contextual_retrieval and len(chunk_texts) <= settings.contextual_max_chunks:
+        full_text = "\n\n".join(chunk_texts)
+        contexts = context.contextualize_all(filename, full_text, chunk_texts)
+        embed_input = [
+            context.contextual_text(ctx, text)
+            for ctx, text in zip(contexts, chunk_texts)
+        ]
+    else:
+        embed_input = chunk_texts
 
-    # 4. Store each chunk as a document with its metadata.
+    # 4. Embed every chunk in one batched call.
+    embeddings = embed_texts(embed_input)
+
+    # 5. Store each chunk as a document with its metadata (original text; any
+    #    context line kept in metadata for transparency).
     total = len(chunk_texts)
     rows = []
-    for i, (text, embedding, meta) in enumerate(
-        zip(chunk_texts, embeddings, chunk_meta)
+    for i, (text, embedding, meta, ctx) in enumerate(
+        zip(chunk_texts, embeddings, chunk_meta, contexts)
     ):
         meta = {**meta, "chunk_index": i}
+        if ctx:
+            meta["context"] = ctx
         title = f"{filename} · p{meta['page']} · chunk {i + 1}/{total}"
         rows.append((title, text, embedding, meta))
     stored = db.insert_documents(user_id, rows)

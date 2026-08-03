@@ -81,6 +81,15 @@ class Settings(BaseSettings):
     # How many query variants to generate (including the original).
     rewrite_variants: int = 3
 
+    # --- Contextual retrieval (Phase 22) ---
+    # When on, each chunk gets a model-written context line prepended before
+    # embedding (better retrieval on chunked docs). Off by default: it costs one
+    # LLM call *per chunk* at ingestion, which is slow on the free tier's ~15
+    # requests/min. Enable it deliberately for smaller, high-value documents.
+    contextual_retrieval: bool = False
+    # Safety cap: skip contextualization above this many chunks in one upload.
+    contextual_max_chunks: int = 40
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

@@ -24,7 +24,7 @@ from pathlib import Path
 from eval.judge import judge_answer
 from models import Message
 from prompts import build_rag_system_prompt, format_context_block
-from services import db, rewrite
+from services import context, db, rewrite
 from services.gemini import embed_texts, stream_chat
 from services.search import multi_query_search, run_search
 
@@ -210,6 +210,84 @@ def compare_retrieval(k: int = 2, variants: int = 3) -> dict:
         "single_hit_rate": round(single_rate, 3),
         "multi_hit_rate": round(multi_rate, 3),
         "delta": round(multi_rate - single_rate, 3),
+        "results": per_question,
+    }
+
+
+def load_context_eval() -> dict:
+    """Load the chunked-document scenario used to compare contextual retrieval."""
+    path = Path(__file__).resolve().parent / "golden_context.json"
+    return json.loads(path.read_text())
+
+
+def _seed_vectors(
+    titles: list[str], texts: list[str], vectors: list[list[float]]
+) -> None:
+    """Replace the eval user's corpus with rows using *given* embeddings.
+
+    Lets the contextual comparison store the same display text while embedding
+    two different things (raw vs contextualized), isolating the embedding change.
+    """
+    with db.get_conn() as conn:
+        conn.execute("DELETE FROM documents WHERE user_id = %s;", (EVAL_USER_ID,))
+    rows = [
+        (title, text, vec, {"source": "eval"})
+        for title, text, vec in zip(titles, texts, vectors)
+    ]
+    db.insert_documents(EVAL_USER_ID, rows)
+
+
+def compare_contextual(k: int = 1) -> dict:
+    """Compare raw vs contextual chunk embeddings (Phase 22).
+
+    Same chunks, same display text — only what we embed differs: the raw chunk
+    vs a context-line-prepended version. We retrieve with *vector* search (to
+    isolate the embedding change) at a selective k, over a chunked document whose
+    passages are ambiguous in isolation (e.g. two sections both starting "The
+    annual allowance is N days").
+    """
+    data = load_context_eval()
+    chunks = data["chunks"]
+    titles = [c["title"] for c in chunks]
+    texts = [c["text"] for c in chunks]
+    full_text = "\n\n".join(texts)
+
+    def _hits(question: str, expected: str) -> bool:
+        found = run_search(EVAL_USER_ID, question, k, "vector")
+        return expected in [h["title"] for h in found]
+
+    # Pass 1: raw embeddings.
+    _seed_vectors(titles, texts, embed_texts(texts))
+    raw = {q["q"]: _hits(q["q"], q["expected"]) for q in data["questions"]}
+
+    # Pass 2: contextualized embeddings (store original text, embed context+text).
+    ctx_lines = context.contextualize_all(data["doc_title"], full_text, texts)
+    ctx_input = [
+        context.contextual_text(c, t) for c, t in zip(ctx_lines, texts)
+    ]
+    _seed_vectors(titles, texts, embed_texts(ctx_input))
+    ctx = {q["q"]: _hits(q["q"], q["expected"]) for q in data["questions"]}
+
+    per_question = [
+        {
+            "question": q["q"],
+            "expected": q["expected"],
+            "raw_hit": raw[q["q"]],
+            "contextual_hit": ctx[q["q"]],
+        }
+        for q in data["questions"]
+    ]
+    n = len(per_question)
+    raw_rate = sum(1 for r in per_question if r["raw_hit"]) / n if n else 0
+    ctx_rate = sum(1 for r in per_question if r["contextual_hit"]) / n if n else 0
+    return {
+        "k": k,
+        "num_chunks": len(chunks),
+        "num_questions": n,
+        "raw_hit_rate": round(raw_rate, 3),
+        "contextual_hit_rate": round(ctx_rate, 3),
+        "delta": round(ctx_rate - raw_rate, 3),
+        "context_lines": ctx_lines,
         "results": per_question,
     }
 

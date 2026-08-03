@@ -248,7 +248,7 @@ Rate limiting, abuse prevention, injection defense, token lifecycle, auditing.
 - ✅ LLM-as-judge quality gate in CI
 - ✅ Per-turn tracing & token accounting
 - ✅ Query rewriting + multi-query retrieval
-- ⬜ Contextual retrieval at ingestion
+- ✅ Contextual retrieval at ingestion
 - ⬜ User feedback flywheel
 - ⬜ Prompt / embedding / response caching
 - ⬜ Semantic memory + memory controls

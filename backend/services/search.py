@@ -33,6 +33,8 @@ def run_search(
     cross-encoder has enough to choose from), then trim to k. Otherwise we just
     retrieve k directly.
     """
+    if not (query or "").strip():
+        return []  # nothing to search for — avoid embedding an empty string
     n = settings.rerank_candidates if rerank else k
     hits = _retrieve(user_id, query, n, mode)
     if rerank:
@@ -96,6 +98,8 @@ def _fuse(ranked_lists: list[tuple[str, list[dict]]], k: int) -> list[dict]:
 
 
 def _hybrid(user_id: int, query: str, k: int) -> list[dict]:
+    if not (query or "").strip():
+        return []
     candidates = max(_CANDIDATES, k)
     vector_hits = db.search(user_id, embed_text(query), candidates)
     keyword_hits = db.keyword_search(user_id, query, candidates)
@@ -110,8 +114,10 @@ def multi_query_search(user_id: int, queries: list[str], k: int) -> list[dict]:
     rewarded. Falls back to plain hybrid when there's a single query.
     """
     queries = [q for q in queries if q and q.strip()]
-    if len(queries) <= 1:
-        return _hybrid(user_id, queries[0] if queries else "", k)
+    if not queries:
+        return []
+    if len(queries) == 1:
+        return _hybrid(user_id, queries[0], k)
 
     candidates = max(_CANDIDATES, k)
     ranked_lists: list[tuple[str, list[dict]]] = []
