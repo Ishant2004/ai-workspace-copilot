@@ -602,6 +602,24 @@ timeline under the answer ("⏱ 3.1s · ~180 tok"), turning "that felt slow" int
 "generation was 2.6s of the 3.1s". `GET /threads/{id}/traces` returns the
 history. Tracing is wrapped so it can never break the chat itself.
 
+## Phase 21: query rewriting & multi-query retrieval
+
+Retrieval quality is capped by the query you feed it, and a raw user message is
+often a bad query: pronoun-laden and using different words than the documents.
+This phase inserts a rewriting step before retrieval. `services/rewrite.py` asks
+the model to turn one message into a few **standalone, paraphrased queries** — the
+original made self-contained (pronouns resolved from history) plus vocabulary
+variants. `multi_query_search` retrieves for every variant and fuses all the
+ranked lists with the same **RRF** used for hybrid search (refactored into a
+reusable `_fuse`), so a document that's relevant across phrasings is rewarded.
+
+RAG now uses this by default (config-toggleable, one extra LLM call per turn). To
+prove it helps rather than assume it, `eval/compare_retrieval()` measures
+retrieval hit@k for single- vs multi-query over a corpus seeded with confusable
+same-topic distractors; at k=1 multi-query recovers ambiguous questions that
+single-query misses (measured +12% in one run). This is the payoff of building
+the eval harness first — the improvement is a number, not a vibe.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

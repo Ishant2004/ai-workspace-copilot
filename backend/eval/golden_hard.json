@@ -1,0 +1,62 @@
+{
+  "extra_documents": [
+    {
+      "title": "Parking",
+      "text": "Employees can park in Lot C at no cost. Reserved spots near the entrance require a monthly permit issued by the facilities team."
+    },
+    {
+      "title": "Kitchen",
+      "text": "The third-floor kitchen offers free coffee, tea, and snacks. The espresso machine is deep-cleaned every Friday afternoon."
+    },
+    {
+      "title": "Holidays",
+      "text": "The company observes 11 public holidays each year. The full holiday calendar is published every December for the year ahead."
+    },
+    {
+      "title": "IT Support",
+      "text": "For hardware or software problems, open a ticket with the IT helpdesk. Routine password resets are self-service through the account portal."
+    },
+    {
+      "title": "Sick Leave",
+      "text": "Employees receive 10 paid sick days per year. Unused sick days are forfeited at the end of the year and do not roll over into the next year."
+    },
+    {
+      "title": "Contractor Policy",
+      "text": "Contractors set their own schedule and may work off-site at any time with no approval needed. Contractors are not eligible for paid time off."
+    }
+  ],
+  "questions": [
+    {
+      "q": "Can I leave my work computer open while I grab lunch at a cafe?",
+      "expected_doc_title": "Security Onboarding"
+    },
+    {
+      "q": "What happens to the vacation days I don't use by the end of the year?",
+      "expected_doc_title": "PTO Policy"
+    },
+    {
+      "q": "How do I get paid back after buying something for the team?",
+      "expected_doc_title": "Expense Reimbursement"
+    },
+    {
+      "q": "Do I need sign-off to stay home every day of the week?",
+      "expected_doc_title": "Remote Work"
+    },
+    {
+      "q": "How do visitors get onto the internet here?",
+      "expected_doc_title": "Office WiFi"
+    },
+    {
+      "q": "What account protection do I have to turn on when I start?",
+      "expected_doc_title": "Security Onboarding"
+    },
+    {
+      "q": "How many days off do I get each year, and can I roll unused ones into next year?",
+      "expected_doc_title": "PTO Policy"
+    },
+    {
+      "q": "Can I work from home all the time without asking anyone?",
+      "expected_doc_title": "Remote Work"
+    }
+  ]
+}

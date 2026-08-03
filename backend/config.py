@@ -73,6 +73,14 @@ class Settings(BaseSettings):
     # (and cost), we only send the most recent N messages — a "sliding window".
     history_window: int = 20
 
+    # --- Query rewriting / multi-query retrieval (Phase 21) ---
+    # When on, RAG retrieval first expands the question into a few standalone,
+    # paraphrased queries and fuses their results (better recall on vague or
+    # conversational questions). Costs one extra LLM call per RAG turn.
+    retrieval_multi_query: bool = True
+    # How many query variants to generate (including the original).
+    rewrite_variants: int = 3
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

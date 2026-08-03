@@ -24,9 +24,9 @@ from pathlib import Path
 from eval.judge import judge_answer
 from models import Message
 from prompts import build_rag_system_prompt, format_context_block
-from services import db
+from services import db, rewrite
 from services.gemini import embed_texts, stream_chat
-from services.search import run_search
+from services.search import multi_query_search, run_search
 
 # A sentinel owner id for eval data. Real users come from a BIGSERIAL starting at
 # 1 (positive), so a negative id can never collide with a real account.
@@ -40,8 +40,19 @@ def load_golden() -> dict:
     return json.loads(_GOLDEN_PATH.read_text())
 
 
+def load_hard() -> dict:
+    """Load the harder, vaguer question set used to compare retrieval (Phase 21).
+
+    These use different vocabulary than the documents and add distractor docs, so
+    single-query retrieval has room to miss — which is exactly where query
+    rewriting + multi-query fusion is meant to help.
+    """
+    path = Path(__file__).resolve().parent / "golden_hard.json"
+    return json.loads(path.read_text())
+
+
 def seed_corpus(documents: list[dict]) -> int:
-    """Replace the eval user's corpus with the golden documents.
+    """Replace the eval user's corpus with the given documents.
 
     We wipe first so repeated runs are deterministic (no duplicate docs piling
     up across runs). Then we embed every document and insert them in one batch.
@@ -151,6 +162,56 @@ def evaluate(k: int = 4, judge: bool = True) -> dict:
             sum(r["relevance"] for r in per_question) / n, 2
         )
     return report
+
+
+def compare_retrieval(k: int = 2, variants: int = 3) -> dict:
+    """Compare single-query hybrid vs query-rewriting multi-query retrieval.
+
+    Isolates the Phase 21 change: it measures **retrieval hit@k only** (did the
+    right document make the top-k?), so it needs no answer generation — just
+    embeddings and one rewrite call per question. A smaller k over a corpus with
+    distractors makes retrieval selective enough for the difference to show.
+    """
+    golden = load_golden()
+    hard = load_hard()
+    corpus = golden["documents"] + hard.get("extra_documents", [])
+    seeded = seed_corpus(corpus)
+
+    per_question = []
+    for item in hard["questions"]:
+        q = item["q"]
+        expected = item["expected_doc_title"]
+
+        base_hits = run_search(EVAL_USER_ID, q, k, "hybrid")
+        base_hit = expected in [h["title"] for h in base_hits]
+
+        queries = rewrite.expand_query(q, "", variants)
+        multi_hits = multi_query_search(EVAL_USER_ID, queries, k)
+        multi_hit = expected in [h["title"] for h in multi_hits]
+
+        per_question.append(
+            {
+                "question": q,
+                "expected_doc": expected,
+                "queries": queries,
+                "single_hit": base_hit,
+                "multi_hit": multi_hit,
+            }
+        )
+
+    n = len(per_question)
+    single_rate = sum(1 for r in per_question if r["single_hit"]) / n if n else 0
+    multi_rate = sum(1 for r in per_question if r["multi_hit"]) / n if n else 0
+    return {
+        "k": k,
+        "variants": variants,
+        "documents_seeded": seeded,
+        "num_questions": n,
+        "single_hit_rate": round(single_rate, 3),
+        "multi_hit_rate": round(multi_rate, 3),
+        "delta": round(multi_rate - single_rate, 3),
+        "results": per_question,
+    }
 
 
 def save_report(report: dict) -> Path:

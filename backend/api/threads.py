@@ -39,7 +39,7 @@ from prompts import (
 )
 from services import coordinator, planner, profile, threads, tools, tracing
 from services.gemini import stream_chat
-from services.search import run_search
+from services.search import search_expanded
 
 router = APIRouter()
 
@@ -126,12 +126,23 @@ def thread_chat(
                 messages = [
                     Message(role=m["role"], content=m["content"]) for m in window
                 ]
+                # Phase 21: expand the question into standalone/paraphrased
+                # queries (resolving pronouns from prior turns) and fuse. History
+                # excludes the just-persisted current message.
+                prior = [m for m in window[:-1]]
+                history_text = "\n".join(
+                    f"{m['role']}: {m['content']}" for m in prior[-6:]
+                )
                 r_start = time.perf_counter()
-                hits = run_search(user_id, request.content, 4, "hybrid")
+                hits = search_expanded(
+                    user_id, request.content, 4, history_text
+                )
                 trace.add(
                     "retrieval",
                     round((time.perf_counter() - r_start) * 1000),
-                    strategy="hybrid",
+                    strategy="multi_query"
+                    if settings.retrieval_multi_query
+                    else "hybrid",
                     hits=len(hits),
                 )
                 yield _sse(

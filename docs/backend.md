@@ -37,6 +37,7 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `services/pdf.py` | Extract text from PDF bytes, per page (pypdf). |
 | `services/chunking.py` | Recursive boundary-aware chunking with overlap. |
 | `services/tracing.py` | Per-turn trace: timed spans + token estimate, persisted (Phase 20). |
+| `services/rewrite.py` | Query rewriting: expand a question into standalone/paraphrased queries (Phase 21). |
 | `eval/harness.py` | Evaluation harness: seed golden corpus, score retrieval + answers (Phase 18). |
 | `eval/judge.py` | LLM-as-judge: grades faithfulness + relevance 1–5 (Phase 19). |
 | `eval/run_eval.py` | CLI runner + regression gate — prints metrics, writes a report, fails on regression. |
@@ -270,6 +271,7 @@ We measure RAG quality objectively so later changes can be judged, not guessed.
 cd backend
 PYTHONPATH="$(pwd)" .venv/bin/python -m eval.run_eval            # full, judge on
 PYTHONPATH="$(pwd)" .venv/bin/python -m eval.run_eval --no-judge # faster
+PYTHONPATH="$(pwd)" .venv/bin/python -m eval.run_eval --compare  # single vs multi-query
 ```
 
 Baseline on the seeded corpus: retrieval hit@4 **100%**, answer accuracy
@@ -296,3 +298,25 @@ CI runs this gate (`.github/workflows/ci.yml`, `eval-gate` job) when the repo ha
 `DATABASE_URL` + `GEMINI_API_KEY` secrets set, and skips cleanly otherwise. Note
 the free tier caps at ~15 requests/min and a judged run makes 2 calls/question,
 so the harness uses long backoffs to ride out 429 cooldowns.
+
+### Query rewriting & multi-query retrieval (Phase 21)
+
+A raw user message is often a poor search query — it leans on pronouns ("how many
+can I carry over?") and uses different words than the documents.
+`services/rewrite.py` expands it into a few **standalone, paraphrased queries**
+(the original made self-contained using conversation history, plus vocabulary
+variants). `services/search.py:multi_query_search` retrieves both ways (vector +
+keyword) for each variant and fuses everything in one **RRF** pass (the fusion is
+now a reusable `_fuse` over any number of ranked lists — same math as hybrid,
+more lists). `search_expanded()` combines the two and is what RAG uses; it honours
+`RETRIEVAL_MULTI_QUERY` (on by default) and `REWRITE_VARIANTS` (default 3), and
+costs one extra LLM call per RAG turn.
+
+`eval/compare_retrieval()` isolates the effect: it measures **retrieval hit@k
+only** (no generation) for single-query vs multi-query over a corpus that
+includes confusable same-topic distractors (`eval/golden_hard.json` — e.g. Sick
+Leave vs PTO, Contractor vs Remote Work). At the selective k=1, single-query
+hybrid misses ambiguous questions that multi-query recovers: a measured lift of
+**75% → 88% (+12%)** in one run (rewriting is stochastic, so the delta varies run
+to run but stays positive). `evaluate()` itself still uses single-query hybrid as
+the stable retrieval floor; `compare` is where the Phase 21 gain is shown.

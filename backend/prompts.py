@@ -83,6 +83,32 @@ def build_chat_system_prompt() -> str:
     )
 
 
+def build_rewrite_prompt(question: str, history: str, n: int) -> str:
+    """Ask the model to expand a question into standalone search queries (Phase 21).
+
+    Two problems this fixes before retrieval even runs:
+      - **Pronouns / context.** "How many can I carry over?" is meaningless to a
+        retriever on its own; resolved against the conversation it becomes "How
+        many unused PTO days can I carry over?".
+      - **Vocabulary mismatch.** A user rarely uses the document's exact words.
+        Generating a few paraphrases with different terms gives the retrievers
+        more surface area to match, and fusing the results (RRF) keeps what's
+        consistently relevant.
+    """
+    history_block = f"\nCONVERSATION SO FAR:\n{history}\n" if history else ""
+    return (
+        "Rewrite the user's question into standalone search queries for a "
+        "document retriever.\n"
+        f"Return {n} queries: the first is the user's question made "
+        "self-contained (resolve any pronouns/references using the "
+        "conversation); the rest are paraphrases that use different but "
+        "equivalent vocabulary. Keep each concise and on-topic — do not invent "
+        "new facts or broaden the intent.\n"
+        f"{history_block}\n"
+        f"USER QUESTION: {question}"
+    )
+
+
 def build_judge_prompt(question: str, context: str, answer: str) -> str:
     """Rubric prompt for LLM-as-judge grading (Phase 19).
 
