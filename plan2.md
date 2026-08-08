@@ -249,7 +249,7 @@ Rate limiting, abuse prevention, injection defense, token lifecycle, auditing.
 - ✅ Per-turn tracing & token accounting
 - ✅ Query rewriting + multi-query retrieval
 - ✅ Contextual retrieval at ingestion
-- ⬜ User feedback flywheel
+- ✅ User feedback flywheel
 - ⬜ Prompt / embedding / response caching
 - ⬜ Semantic memory + memory controls
 - ⬜ Multi-format ingestion

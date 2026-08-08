@@ -42,7 +42,7 @@ info (weather, news, GitHub, prices) off the live web via DuckDuckGo (no API key
 | 20 | Observability & tracing | ✅ Done |
 | 21 | Query rewriting & multi-query retrieval | ✅ Done |
 | 22 | Contextual retrieval | ✅ Done |
-| 23 | Feedback loop | ⬜ Planned |
+| 23 | Feedback loop | ✅ Done |
 | 24 | Caching (prompt / embedding / response) | ⬜ Planned |
 | 25 | Semantic memory + management UI | ⬜ Planned |
 | 26 | More ingestion formats | ⬜ Planned |

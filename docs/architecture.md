@@ -638,6 +638,18 @@ retrieval hits 50% @1 and contextualized hits 75% (+25%). The context generation
 isn't perfect (one chunk got a vague label and stayed a miss), which is exactly
 the kind of thing the eval surfaces instead of hiding.
 
+## Phase 23: feedback loop
+
+Evals (18-22) measure a fixed golden set; this closes the loop with real usage.
+Each assistant answer gets 👍/👎 buttons (a 👎 reveals an optional note); the
+rating is stored in a `feedback` table with the question and answer text.
+`GET /feedback/stats` gives a live satisfaction rate, and `eval/export_feedback.py`
+turns the thumbs-down cases — the questions the system actually got wrong — into
+golden-set candidates. That's the flywheel: production failures flow back into the
+evaluation set, so the thing we measure keeps growing from what users hit. The
+export deliberately leaves the "correct answer" blank for a human to fill, because
+that judgment is exactly what the eval is built on.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

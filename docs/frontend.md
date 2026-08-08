@@ -125,6 +125,10 @@ The Chat tab is a two-pane layout: a **sidebar** listing conversations (with
   - *Every* mode ends with a `trace` event (Phase 20), rendered as a collapsible
     **`TraceView`** under the answer: "⏱ 3.1s · ~180 tok · N steps", expanding to
     a per-span timeline (retrieval, each tool call, generation) with mini bars.
+  - *(Phase 23)* every assistant answer shows a **`Feedback`** control (👍/👎; a
+    👎 reveals an optional note). Ratings post to `/feedback` (using the preceding
+    user message as the question) and the sidebar shows a running **satisfaction
+    rate** from `/feedback/stats`.
 
 All streaming shares one SSE reader (`streamSse` in `api.ts`) with optional
 `onSources` / `onTrace` handlers. Messages are stored as `DisplayMessage` (a

@@ -7,11 +7,15 @@ import {
   deleteThread,
   getProfile,
   clearProfile,
+  submitFeedback,
+  getFeedbackStats,
   type ChatMode,
   type Message,
   type SearchHit,
   type Thread,
   type Trace,
+  type Rating,
+  type FeedbackStats,
 } from "../services/api";
 
 // One agent tool step (Phase 11): a tool call and, once run, its result.
@@ -31,6 +35,7 @@ type DisplayMessage = Message & {
   plan?: PlanStep[];
   agents?: AgentTurn[];
   trace?: Trace; // Phase 20: per-turn timing + tokens
+  rating?: Rating; // Phase 23: the user's 👍/👎 on this answer
 };
 
 // Phase 0: streaming chat. Phase 4: RAG grounding. Phase 9: persistent threads.
@@ -44,6 +49,7 @@ export default function Chat() {
   const [mode, setMode] = useState<ChatMode>("chat");
   const [dbError, setDbError] = useState<string | null>(null);
   const [facts, setFacts] = useState<string[]>([]); // Phase 13 profile memory
+  const [fbStats, setFbStats] = useState<FeedbackStats | null>(null); // Phase 23
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -62,6 +68,43 @@ export default function Chat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Phase 23: load the running satisfaction rate on mount.
+  useEffect(() => {
+    refreshFeedbackStats();
+  }, []);
+
+  async function refreshFeedbackStats() {
+    try {
+      setFbStats(await getFeedbackStats());
+    } catch {
+      /* feedback is non-critical; ignore failures */
+    }
+  }
+
+  // Record a 👍/👎 for one answer, using the preceding user message as the
+  // question. Optimistically marks the message, then refreshes the stat.
+  async function rateMessage(index: number, rating: Rating, note = "") {
+    const answer = messages[index]?.content ?? "";
+    // The question is the most recent user message before this answer.
+    let question = "";
+    for (let j = index - 1; j >= 0; j--) {
+      if (messages[j].role === "user") {
+        question = messages[j].content;
+        break;
+      }
+    }
+    if (!answer) return;
+    setMessages((prev) =>
+      prev.map((m, i) => (i === index ? { ...m, rating } : m))
+    );
+    try {
+      await submitFeedback({ threadId: activeId, question, answer, rating, note });
+      await refreshFeedbackStats();
+    } catch {
+      /* ignore; the optimistic mark stays */
+    }
+  }
 
   async function refreshThreads() {
     try {
@@ -360,6 +403,19 @@ export default function Chat() {
             </ul>
           </div>
         )}
+
+        {/* Phase 23: running satisfaction rate from 👍/👎 feedback. */}
+        {fbStats && fbStats.satisfaction_rate !== null && (
+          <div className="border-t border-neutral-200 px-3 py-2">
+            <span className="text-xs text-neutral-500">
+              Satisfaction: {Math.round((fbStats.satisfaction_rate ?? 0) * 100)}%
+              <span className="text-neutral-400">
+                {" "}
+                ({fbStats.up}/{fbStats.up + fbStats.down})
+              </span>
+            </span>
+          </div>
+        )}
       </aside>
 
       {/* Conversation */}
@@ -404,6 +460,12 @@ export default function Chat() {
                 <Sources hits={m.sources} />
               )}
               {m.trace && <TraceView trace={m.trace} />}
+              {m.role === "assistant" && m.content && !(busy && i === messages.length - 1) && (
+                <Feedback
+                  rating={m.rating}
+                  onRate={(rating, note) => rateMessage(i, rating, note)}
+                />
+              )}
             </div>
           ))}
           <div ref={bottomRef} />
@@ -586,6 +648,66 @@ function TraceView({ trace }: { trace: Trace }) {
         ))}
       </div>
     </details>
+  );
+}
+
+// Thumbs up/down under an assistant answer (Phase 23). A 👎 reveals an optional
+// one-line note; both submit immediately. The choice is remembered on the message
+// so the buttons reflect it (and re-clicking updates the stored rating).
+function Feedback({
+  rating,
+  onRate,
+}: {
+  rating?: Rating;
+  onRate: (rating: Rating, note?: string) => void;
+}) {
+  const [showNote, setShowNote] = useState(false);
+  const [note, setNote] = useState("");
+  return (
+    <div className="mt-1 flex items-center gap-2 text-left">
+      <button
+        onClick={() => onRate("up")}
+        title="Good answer"
+        className={
+          "rounded px-1.5 py-0.5 text-xs " +
+          (rating === "up"
+            ? "bg-green-100 text-green-700"
+            : "text-neutral-400 hover:text-neutral-600")
+        }
+      >
+        👍
+      </button>
+      <button
+        onClick={() => {
+          setShowNote(true);
+          onRate("down");
+        }}
+        title="Bad answer"
+        className={
+          "rounded px-1.5 py-0.5 text-xs " +
+          (rating === "down"
+            ? "bg-red-100 text-red-700"
+            : "text-neutral-400 hover:text-neutral-600")
+        }
+      >
+        👎
+      </button>
+      {rating && <span className="text-xs text-neutral-400">thanks!</span>}
+      {showNote && rating === "down" && (
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && note.trim()) {
+              onRate("down", note.trim());
+              setShowNote(false);
+            }
+          }}
+          placeholder="What was wrong? (optional, Enter to send)"
+          className="flex-1 rounded border border-neutral-200 px-2 py-0.5 text-xs"
+        />
+      )}
+    </div>
   );
 }
 

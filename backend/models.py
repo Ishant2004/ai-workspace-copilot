@@ -203,3 +203,13 @@ class ToolsChatRequest(BaseModel):
     """Body of POST /tools/chat — a message the model may answer using tools."""
 
     message: str
+
+
+class FeedbackRequest(BaseModel):
+    """Body of POST /feedback — a rating for one assistant answer (Phase 23)."""
+
+    thread_id: int | None = None
+    question: str
+    answer: str
+    rating: Literal["up", "down"]
+    note: str = ""

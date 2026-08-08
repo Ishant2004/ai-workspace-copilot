@@ -434,6 +434,43 @@ export async function clearProfile(): Promise<void> {
   if (!r.ok) throw new Error(await errorText(r, "Clear profile"));
 }
 
+// --- Feedback (Phase 23) ---
+export type Rating = "up" | "down";
+
+export async function submitFeedback(input: {
+  threadId: number | null;
+  question: string;
+  answer: string;
+  rating: Rating;
+  note?: string;
+}): Promise<void> {
+  const r = await apiFetch("/api/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      thread_id: input.threadId,
+      question: input.question,
+      answer: input.answer,
+      rating: input.rating,
+      note: input.note ?? "",
+    }),
+  });
+  if (!r.ok) throw new Error(await errorText(r, "Feedback"));
+}
+
+export interface FeedbackStats {
+  up: number;
+  down: number;
+  total: number;
+  satisfaction_rate: number | null;
+}
+
+export async function getFeedbackStats(): Promise<FeedbackStats> {
+  const r = await apiFetch("/api/feedback/stats");
+  if (!r.ok) throw new Error(await errorText(r, "Feedback stats"));
+  return r.json();
+}
+
 export type ChatMode = "chat" | "rag" | "agent" | "plan" | "team";
 
 // Send one new message to a thread. The backend loads history itself and

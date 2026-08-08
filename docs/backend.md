@@ -39,6 +39,9 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `services/tracing.py` | Per-turn trace: timed spans + token estimate, persisted (Phase 20). |
 | `services/rewrite.py` | Query rewriting: expand a question into standalone/paraphrased queries (Phase 21). |
 | `services/context.py` | Contextual retrieval: model-written context line per chunk before embedding (Phase 22). |
+| `services/feedback.py` | 👍/👎 feedback store: rate answers, satisfaction stats, export negatives (Phase 23). |
+| `api/feedback.py` | `POST /feedback`, `GET /feedback/stats`, `GET /feedback/export`. |
+| `eval/export_feedback.py` | CLI: turn thumbs-down feedback into golden-set candidates. |
 | `eval/harness.py` | Evaluation harness: seed golden corpus, score retrieval + answers (Phase 18). |
 | `eval/judge.py` | LLM-as-judge: grades faithfulness + relevance 1–5 (Phase 19). |
 | `eval/run_eval.py` | CLI runner + regression gate — prints metrics, writes a report, fails on regression. |
@@ -189,6 +192,11 @@ system prompt on every turn (chat/RAG/agent). A hard `gemini_request_timeout`
   token estimate. The assistant reply is persisted; new threads are auto-titled.
 - `GET /threads/{id}/traces` → recent per-turn traces for the thread
   (`[{id, mode, total_ms, spans, tokens, created_at}]`), owner-scoped.
+- `POST /feedback` — rate an answer (`{thread_id?, question, answer, rating, note?}`,
+  `rating` ∈ `up`/`down`); upserts by (user, thread, answer) so re-rating doesn't
+  double-count. `GET /feedback/stats` → `{up, down, total, satisfaction_rate}`.
+  `GET /feedback/export` → thumbs-down cases (golden-set candidates). All
+  owner-scoped.
 
 > Requires `DATABASE_URL` (a Neon Postgres URL). The table + `vector` extension
 > are created automatically on startup. Embedding dimension must match
@@ -343,3 +351,15 @@ and compares **vector** hit@1. Measured **50% → 75% (+25%)** in one run. Hones
 caveat: context quality varies — in that run the model labelled the sick-leave
 chunk "annual leave", so that question stayed a miss; the technique helps on
 average, it isn't magic.
+
+### Feedback loop (Phase 23)
+
+Offline evals score a *fixed* set; real users hit cases we never wrote down.
+`services/feedback.py` lets them rate each answer 👍/👎 (with an optional note),
+stored with the question + answer text so a row is self-contained. Two payoffs: a
+live **satisfaction rate** (`GET /feedback/stats`), and a **flywheel** —
+`eval/export_feedback.py` turns thumbs-down cases (the answers the system got
+wrong) into golden-set *candidates* (question + downvoted answer + note; a human
+fills in the expected doc/fact, since that's the judgment the eval depends on).
+Ratings upsert by (user, thread, answer) so re-clicking or adding a note updates
+the row instead of inflating the counts.

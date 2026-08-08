@@ -13,6 +13,7 @@ from api.auth import router as auth_router
 from api.chat import router as chat_router
 from api.documents import router as documents_router
 from api.embed import router as embed_router
+from api.feedback import router as feedback_router
 from api.profile import router as profile_router
 from api.rag import router as rag_router
 from api.threads import router as threads_router
@@ -20,7 +21,7 @@ from api.tokens import router as tokens_router
 from api.tools import router as tools_router
 from api.upload import router as upload_router
 from config import settings
-from services import auth, db, profile, threads, tracing
+from services import auth, db, feedback, profile, threads, tracing
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -37,8 +38,10 @@ async def lifespan(app: FastAPI):
             profile.init_profile()
             auth.init_auth()
             tracing.init_traces()
+            feedback.init_feedback()
             logger.info(
-                "DB tables (vector, threads, profile, users, traces) initialised."
+                "DB tables (vector, threads, profile, users, traces, feedback) "
+                "initialised."
             )
         except Exception as exc:
             logger.warning("Could not initialise database: %s", exc)
@@ -68,6 +71,7 @@ app.include_router(upload_router)
 app.include_router(threads_router)
 app.include_router(tools_router)
 app.include_router(profile_router)
+app.include_router(feedback_router)
 
 
 @app.get("/health")
