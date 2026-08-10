@@ -7,9 +7,11 @@ import {
   deleteThread,
   getProfile,
   clearProfile,
+  deleteFact,
   submitFeedback,
   getFeedbackStats,
   type ChatMode,
+  type Fact,
   type Message,
   type SearchHit,
   type Thread,
@@ -48,7 +50,7 @@ export default function Chat() {
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<ChatMode>("chat");
   const [dbError, setDbError] = useState<string | null>(null);
-  const [facts, setFacts] = useState<string[]>([]); // Phase 13 profile memory
+  const [facts, setFacts] = useState<Fact[]>([]); // Phase 13/25 profile memory
   const [fbStats, setFbStats] = useState<FeedbackStats | null>(null); // Phase 23
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -126,6 +128,16 @@ export default function Chat() {
   async function onForgetProfile() {
     await clearProfile();
     setFacts([]);
+  }
+
+  // Phase 25: forget one specific remembered fact.
+  async function onDeleteFact(id: number) {
+    setFacts((prev) => prev.filter((f) => f.id !== id)); // optimistic
+    try {
+      await deleteFact(id);
+    } catch {
+      refreshProfile(); // resync on failure
+    }
   }
 
   useEffect(() => {
@@ -392,12 +404,19 @@ export default function Chat() {
               </button>
             </div>
             <ul className="space-y-1">
-              {facts.map((f, i) => (
+              {facts.map((f) => (
                 <li
-                  key={i}
-                  className="rounded bg-neutral-50 px-2 py-1 text-xs text-neutral-600"
+                  key={f.id}
+                  className="flex items-start justify-between gap-1 rounded bg-neutral-50 px-2 py-1 text-xs text-neutral-600"
                 >
-                  {f}
+                  <span>{f.fact}</span>
+                  <button
+                    onClick={() => onDeleteFact(f.id)}
+                    title="Forget this fact"
+                    className="shrink-0 text-neutral-300 hover:text-red-600"
+                  >
+                    ✕
+                  </button>
                 </li>
               ))}
             </ul>

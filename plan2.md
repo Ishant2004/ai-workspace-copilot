@@ -261,7 +261,7 @@ Rate limiting, abuse prevention, injection defense, token lifecycle, auditing.
 - ✅ Contextual retrieval at ingestion
 - ✅ User feedback flywheel
 - ✅ Embedding / retrieval / response caching
-- ⬜ Semantic memory + memory controls
+- ✅ Semantic memory + memory controls
 - ⬜ Multi-format ingestion
 - ⬜ Deeper tools (URL fetch, CSV)
 - ⬜ Polished, production-feel UX

@@ -20,10 +20,15 @@ import threading
 
 from google.genai import types
 
+from config import settings
 from services import gemini
 from services.db import get_conn
+from services.gemini import embed_text
 
 logger = logging.getLogger("uvicorn.error")
+
+# Phase 25: how many relevant facts to inject per turn when the profile is large.
+_RELEVANT_K = 5
 
 # Extraction returns a JSON array of short fact strings.
 _FACTS_SCHEMA = types.Schema(
@@ -66,6 +71,13 @@ def init_profile() -> None:
             "CREATE UNIQUE INDEX IF NOT EXISTS user_facts_user_fact_idx "
             "ON user_facts (user_id, fact);"
         )
+        # Phase 25: an embedding per fact, so we can inject only the facts
+        # *relevant* to the current message instead of the whole profile.
+        # Nullable — legacy rows are back-filled lazily on first relevant read.
+        conn.execute(
+            f"ALTER TABLE user_facts ADD COLUMN IF NOT EXISTS "
+            f"embedding vector({settings.gemini_embed_dim});"
+        )
 
 
 def get_facts(user_id: int) -> list[str]:
@@ -77,18 +89,43 @@ def get_facts(user_id: int) -> list[str]:
     return [r[0] for r in rows]
 
 
+def get_facts_with_ids(user_id: int) -> list[dict]:
+    """Facts with their ids, for the management UI (view/delete individually)."""
+    with get_conn(register=False) as conn:
+        rows = conn.execute(
+            "SELECT id, fact FROM user_facts WHERE user_id = %s ORDER BY id;",
+            (user_id,),
+        ).fetchall()
+    return [{"id": r[0], "fact": r[1]} for r in rows]
+
+
 def add_facts(user_id: int, facts: list[str]) -> None:
-    """Insert new facts for the user, ignoring duplicates ((user_id,fact) UNIQUE)."""
+    """Insert new facts for the user, ignoring duplicates ((user_id,fact) UNIQUE).
+
+    Each fact is embedded (Phase 25) so it can later be retrieved by relevance.
+    Embedding is cached (Phase 24), so re-seeing a fact is cheap.
+    """
     clean = [f.strip() for f in facts if f and f.strip()]
     if not clean:
         return
-    with get_conn(register=False) as conn:
+    rows = [(user_id, f, embed_text(f)) for f in clean]
+    with get_conn() as conn:  # register=True: adapt Python lists to pgvector
         with conn.cursor() as cur:
             cur.executemany(
-                "INSERT INTO user_facts (user_id, fact) VALUES (%s, %s) "
-                "ON CONFLICT (user_id, fact) DO NOTHING;",
-                [(user_id, f) for f in clean],
+                "INSERT INTO user_facts (user_id, fact, embedding) "
+                "VALUES (%s, %s, %s) ON CONFLICT (user_id, fact) DO NOTHING;",
+                rows,
             )
+
+
+def delete_fact(user_id: int, fact_id: int) -> bool:
+    """Delete one of the user's facts. False if missing or not theirs."""
+    with get_conn(register=False) as conn:
+        result = conn.execute(
+            "DELETE FROM user_facts WHERE id = %s AND user_id = %s;",
+            (fact_id, user_id),
+        )
+        return result.rowcount > 0
 
 
 def clear_facts(user_id: int) -> None:
@@ -96,13 +133,65 @@ def clear_facts(user_id: int) -> None:
         conn.execute("DELETE FROM user_facts WHERE user_id = %s;", (user_id,))
 
 
-def preamble(user_id: int) -> str:
-    """A system-prompt block describing the user, or '' if we know nothing."""
-    facts = get_facts(user_id)
+def _format_preamble(facts: list[str]) -> str:
     if not facts:
         return ""
     lines = "\n".join(f"- {f}" for f in facts)
     return f"What you know about the user:\n{lines}\n\n"
+
+
+def preamble(user_id: int) -> str:
+    """A system-prompt block describing the user (ALL facts), or '' if none."""
+    return _format_preamble(get_facts(user_id))
+
+
+def _backfill_embeddings(user_id: int) -> None:
+    """Embed any of the user's facts that predate Phase 25 (embedding IS NULL)."""
+    with get_conn(register=False) as conn:
+        missing = conn.execute(
+            "SELECT id, fact FROM user_facts "
+            "WHERE user_id = %s AND embedding IS NULL;",
+            (user_id,),
+        ).fetchall()
+    if not missing:
+        return
+    with get_conn() as conn:  # register=True for vector params
+        for fact_id, fact in missing:
+            conn.execute(
+                "UPDATE user_facts SET embedding = %s WHERE id = %s;",
+                (embed_text(fact), fact_id),
+            )
+
+
+def _search_facts(user_id: int, query: str, k: int) -> list[str]:
+    """Top-k facts most relevant to the query, by embedding cosine distance."""
+    qvec = embed_text(query)
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT fact FROM user_facts "
+            "WHERE user_id = %s AND embedding IS NOT NULL "
+            "ORDER BY embedding <=> %s::vector LIMIT %s;",
+            (user_id, qvec, k),
+        ).fetchall()
+    return [r[0] for r in rows]
+
+
+def relevant_preamble(user_id: int, query: str, k: int = _RELEVANT_K) -> str:
+    """System-prompt block with only the facts *relevant* to `query` (Phase 25).
+
+    Injecting the entire profile every turn wastes context and dilutes the
+    relevant facts as it grows. Instead we embed the message and pull the top-k
+    closest facts. Small profiles (<= k) skip the ranking (and its embed call)
+    and just return everything — cheaper and identical in effect.
+    """
+    facts = get_facts(user_id)
+    if not facts:
+        return ""
+    if len(facts) <= k or not (query or "").strip():
+        return _format_preamble(facts)
+    _backfill_embeddings(user_id)
+    selected = _search_facts(user_id, query, k)
+    return _format_preamble(selected or facts)
 
 
 def _extract(user_id: int, user_message: str) -> None:

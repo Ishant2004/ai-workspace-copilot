@@ -193,6 +193,8 @@ system prompt on every turn (chat/RAG/agent). A hard `gemini_request_timeout`
   token estimate. The assistant reply is persisted; new threads are auto-titled.
 - `GET /threads/{id}/traces` → recent per-turn traces for the thread
   (`[{id, mode, total_ms, spans, tokens, created_at}]`), owner-scoped.
+- `GET /profile` → durable facts with ids (`{facts: [{id, fact}]}`).
+  `DELETE /profile` clears all; `DELETE /profile/{fact_id}` forgets one (Phase 25).
 - `POST /feedback` — rate an answer (`{thread_id?, question, answer, rating, note?}`,
   `rating` ∈ `up`/`down`); upserts by (user, thread, answer) so re-rating doesn't
   double-count. `GET /feedback/stats` → `{up, down, total, satisfaction_rate}`.
@@ -386,3 +388,16 @@ observable. Real Gemini *prompt* caching (`CachedContent`) needs a large minimum
 token count and isn't reliable on the free tier, so we cache what's safe and
 useful instead of adding fragile context-cache code. `embed_texts` (bulk
 ingestion of new content) is intentionally not cached — it rarely sees repeats.
+
+### Semantic memory + management (Phase 25)
+
+Phase 13 injected the *entire* profile into every system prompt — fine for a few
+facts, wasteful and diluting as it grows. Now `user_facts` carries an `embedding`
+per fact, and `profile.relevant_preamble(user_id, message)` injects only the
+**top-k facts relevant to the current message** (embed the message → cosine
+search over the user's facts). Small profiles (≤ k) skip the ranking and its
+embed call entirely and just return everything — cheaper and identical in effect.
+Legacy facts from before this phase (NULL embedding) are back-filled lazily the
+first time a large profile is read. Management: `GET /profile` now returns facts
+with ids and `DELETE /profile/{fact_id}` forgets one, so the UI can show a
+per-fact ✕. `preamble()` (all facts) is kept for any non-message-scoped caller.

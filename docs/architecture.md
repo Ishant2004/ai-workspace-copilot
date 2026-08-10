@@ -665,6 +665,18 @@ hit/miss so the win is measurable (and ties back to Phase 20's observability
 theme). We deliberately skip explicit Gemini prompt caching — its minimum-token
 requirement makes it unreliable on the free tier — rather than ship fragile code.
 
+## Phase 25: semantic memory + management
+
+Phase 13 remembered facts about the user but injected *all* of them into every
+prompt. As a profile grows that wastes context and buries the facts that matter
+for the current question. Phase 25 stores an embedding per fact and, each turn,
+retrieves only the **top-k facts relevant to the message** (embed the message →
+cosine search over the user's facts) — the same retrieval idea as RAG, applied to
+memory. Small profiles skip the ranking (and its embed call) and just return
+everything, so nothing gets slower for the common case; legacy facts are embedded
+lazily on first use. Users also get control: facts are listed with ids and a
+per-fact ✕ deletes one (`DELETE /profile/{id}`), not just "forget everything".
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

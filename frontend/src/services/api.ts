@@ -422,8 +422,13 @@ export async function deleteThread(id: number): Promise<void> {
 // --- Phase 13: long-term user profile memory ---
 
 // Durable facts the assistant has learned about the user, shown across all
-// conversations.
-export async function getProfile(): Promise<string[]> {
+// conversations. Each carries an id so it can be deleted individually (Phase 25).
+export interface Fact {
+  id: number;
+  fact: string;
+}
+
+export async function getProfile(): Promise<Fact[]> {
   const r = await apiFetch("/api/profile");
   if (!r.ok) throw new Error(await errorText(r, "Profile"));
   return (await r.json()).facts;
@@ -432,6 +437,11 @@ export async function getProfile(): Promise<string[]> {
 export async function clearProfile(): Promise<void> {
   const r = await apiFetch("/api/profile", { method: "DELETE" });
   if (!r.ok) throw new Error(await errorText(r, "Clear profile"));
+}
+
+export async function deleteFact(id: number): Promise<void> {
+  const r = await apiFetch(`/api/profile/${id}`, { method: "DELETE" });
+  if (!r.ok) throw new Error(await errorText(r, "Delete fact"));
 }
 
 // --- Feedback (Phase 23) ---

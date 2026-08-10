@@ -44,7 +44,7 @@ info (weather, news, GitHub, prices) off the live web via DuckDuckGo (no API key
 | 22 | Contextual retrieval | ✅ Done |
 | 23 | Feedback loop | ✅ Done |
 | 24 | Caching (embedding / retrieval / response) | ✅ Done |
-| 25 | Semantic memory + management UI | ⬜ Planned |
+| 25 | Semantic memory + management UI | ✅ Done |
 | 26 | More ingestion formats | ⬜ Planned |
 | 27 | More tools (URL fetch, CSV) | ⬜ Planned |
 | 28 | UX polish | ⬜ Planned |

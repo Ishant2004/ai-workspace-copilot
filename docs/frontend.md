@@ -145,6 +145,11 @@ learned about the user (`GET /api/profile`), with a **Forget** button
 (`DELETE /api/profile`). It refreshes on load and ~1.5s after each turn (fact
 extraction runs in the background server-side, so we re-fetch shortly after).
 
+Phase 25: each fact is listed with its id and a per-fact **✕** that forgets just
+that one (`DELETE /api/profile/{id}`, optimistic remove). Server-side, only the
+facts *relevant* to the current message are injected into the prompt, not the
+whole list — so the panel can grow without bloating every request.
+
 ## Stopping a response
 
 The input's **Send** button becomes a red **Stop** while a response is

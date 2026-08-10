@@ -117,7 +117,9 @@ def thread_chat(
             )
             # Phase 13: what we durably know about the user, injected into the
             # system prompt so the assistant remembers across conversations.
-            user_profile = profile.preamble(user_id)
+            # Phase 25: only the facts *relevant* to this message (semantic
+            # retrieval over the profile), not the entire profile every turn.
+            user_profile = profile.relevant_preamble(user_id, request.content)
 
             if request.mode == "rag":
                 # RAG stays grounded on the retrieved documents only (no tools):
