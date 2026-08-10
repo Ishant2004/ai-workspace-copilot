@@ -19,6 +19,7 @@ from pgvector.psycopg import register_vector
 from psycopg.types.json import Jsonb
 
 from config import settings
+from services import cache
 
 
 @contextmanager
@@ -97,7 +98,8 @@ def insert_document(
             "VALUES (%s, %s, %s, %s, %s) RETURNING id;",
             (user_id, title, text, embedding, Jsonb(metadata or {})),
         ).fetchone()
-        return row[0]
+    cache.bump_user_version(user_id)  # invalidate cached retrievals for this user
+    return row[0]
 
 
 def insert_documents(
@@ -115,6 +117,7 @@ def insert_documents(
                 "VALUES (%s, %s, %s, %s, %s);",
                 params,
             )
+    cache.bump_user_version(user_id)  # invalidate cached retrievals for this user
     return len(rows)
 
 
@@ -197,7 +200,10 @@ def update_document(
             "WHERE id = %s AND user_id = %s;",
             (title, text, embedding, doc_id, user_id),
         )
-        return result.rowcount > 0
+        changed = result.rowcount > 0
+    if changed:
+        cache.bump_user_version(user_id)
+    return changed
 
 
 def delete_document(user_id: int, doc_id: int) -> bool:
@@ -207,7 +213,10 @@ def delete_document(user_id: int, doc_id: int) -> bool:
             "DELETE FROM documents WHERE id = %s AND user_id = %s;",
             (doc_id, user_id),
         )
-        return result.rowcount > 0
+        changed = result.rowcount > 0
+    if changed:
+        cache.bump_user_version(user_id)
+    return changed
 
 
 def count_documents(user_id: int) -> int:

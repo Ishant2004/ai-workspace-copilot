@@ -15,6 +15,7 @@ from google.genai import types
 
 from config import settings
 from models import Message
+from services import cache
 
 # One client for the whole process. It is cheap to keep around and reuses the
 # underlying HTTP connection. A hard request timeout (in ms) means a hung or
@@ -93,7 +94,14 @@ def embed_text(text: str) -> list[float]:
     We truncate to `gemini_embed_dim` dimensions and normalize to unit length.
     Google recommends normalizing when using a reduced dimension, and unit
     vectors make cosine-similarity math in the vector DB simpler.
+
+    Phase 24: identical text embeds to the same vector, so we cache by content
+    hash and skip the API call on a repeat (query variants, re-asked questions).
     """
+    key = cache.content_hash("emb", settings.gemini_embed_dim, text)
+    hit = cache.embeddings.get(key)
+    if hit is not None:
+        return hit
     result = _client.models.embed_content(
         model=settings.gemini_embed_model,
         contents=text,
@@ -101,7 +109,9 @@ def embed_text(text: str) -> list[float]:
             output_dimensionality=settings.gemini_embed_dim
         ),
     )
-    return _normalize(list(result.embeddings[0].values))
+    vector = _normalize(list(result.embeddings[0].values))
+    cache.embeddings.set(key, vector)
+    return vector
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:

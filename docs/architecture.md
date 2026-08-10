@@ -650,6 +650,21 @@ evaluation set, so the thing we measure keeps growing from what users hit. The
 export deliberately leaves the "correct answer" blank for a human to fill, because
 that judgment is exactly what the eval is built on.
 
+## Phase 24: caching
+
+Cost and latency on the free tier come from repeated identical work, so we cache
+three things — each safe by construction (`services/cache.py`). **Embeddings**:
+text→vector is deterministic, so an LRU keyed by content hash is never stale and
+lets query variants (Phase 21) and re-asked questions skip the embed API.
+**Retrieval**: `(user, mode, k, query)`→hits with a short TTL *and* a per-user
+version stamped into the key — every document write bumps that version (in
+`db.py`), so a cached result can't outlive its data. **Responses**: the stateless
+`/rag/chat` answer, keyed by the whole request (identical input ⇒ identical
+output), buffered on first run and replayed on a hit. `GET /cache/stats` exposes
+hit/miss so the win is measurable (and ties back to Phase 20's observability
+theme). We deliberately skip explicit Gemini prompt caching — its minimum-token
+requirement makes it unreliable on the free tier — rather than ship fragile code.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

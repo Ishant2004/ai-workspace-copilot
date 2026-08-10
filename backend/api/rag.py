@@ -21,7 +21,7 @@ from fastapi.responses import StreamingResponse
 from api.deps import current_user_id
 from models import Message, RagChatRequest
 from prompts import build_rag_system_prompt, format_context_block
-from services import db
+from services import cache, db
 from services.gemini import embed_text, stream_chat
 
 router = APIRouter()
@@ -42,26 +42,39 @@ def _last_user_message(messages: list[Message]) -> str:
 def rag_chat(
     request: RagChatRequest, user_id: int = Depends(current_user_id)
 ) -> StreamingResponse:
+    # Phase 24: response cache. This endpoint is stateless (the client sends the
+    # full message list), so a byte-identical request has a byte-identical answer
+    # — safe to reuse. Keyed by user + k + the whole conversation, versioned so a
+    # document write invalidates it, with a short TTL as a backstop.
+    messages_key = "".join(f"{m.role}:{m.content}" for m in request.messages)
+    cache_key = cache.content_hash(
+        "rag", user_id, request.k, cache.user_version(user_id), messages_key
+    )
+
     def event_stream() -> Iterator[str]:
         try:
+            cached = cache.responses.get(cache_key)
+            if cached is not None:
+                # Replay the stored sources + answer as if freshly generated.
+                yield _sse({"type": "sources", "sources": cached["sources"]})
+                yield _sse({"type": "chunk", "content": cached["answer"]})
+                yield _sse({"type": "done"})
+                return
+
             # 1. Retrieve: embed the latest question and find similar documents.
             query = _last_user_message(request.messages)
             hits = db.search(user_id, embed_text(query), request.k) if query else []
 
             # 2. Tell the UI which documents we're grounding on, up front.
-            yield _sse(
+            sources = [
                 {
-                    "type": "sources",
-                    "sources": [
-                        {
-                            "id": h["id"],
-                            "title": h["title"],
-                            "similarity": h["similarity"],
-                        }
-                        for h in hits
-                    ],
+                    "id": h["id"],
+                    "title": h["title"],
+                    "similarity": h["similarity"],
                 }
-            )
+                for h in hits
+            ]
+            yield _sse({"type": "sources", "sources": sources})
 
             # 3. Build the grounded prompt from the retrieved text.
             context_blocks = [
@@ -71,8 +84,13 @@ def rag_chat(
             system_prompt = build_rag_system_prompt(context_blocks)
 
             # 4. Generate: stream the grounded answer just like /chat.
+            answer = ""
             for piece in stream_chat(request.messages, system_prompt):
+                answer += piece
                 yield _sse({"type": "chunk", "content": piece})
+
+            # 5. Cache the finished answer for identical future requests.
+            cache.responses.set(cache_key, {"sources": sources, "answer": answer})
             yield _sse({"type": "done"})
         except Exception as exc:
             yield _sse({"type": "error", "content": str(exc)})

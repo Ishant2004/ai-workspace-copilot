@@ -14,7 +14,7 @@ wins decisively. It's simple, needs no score normalization, and works well.
 """
 
 from config import settings
-from services import db, rerank as rerank_service, rewrite
+from services import cache, db, rerank as rerank_service, rewrite
 from services.gemini import embed_text
 
 # How many candidates to pull from each retriever before fusing.
@@ -35,10 +35,18 @@ def run_search(
     """
     if not (query or "").strip():
         return []  # nothing to search for — avoid embedding an empty string
+    # Phase 24: cache identical searches (per-user, invalidated on doc writes).
+    key = cache.content_hash(
+        "search", user_id, mode, k, rerank, cache.user_version(user_id), query
+    )
+    cached = cache.retrieval.get(key)
+    if cached is not None:
+        return cached
     n = settings.rerank_candidates if rerank else k
     hits = _retrieve(user_id, query, n, mode)
     if rerank:
         hits = rerank_service.rerank(query, hits, k)
+    cache.retrieval.set(key, hits)
     return hits
 
 
@@ -119,12 +127,22 @@ def multi_query_search(user_id: int, queries: list[str], k: int) -> list[dict]:
     if len(queries) == 1:
         return _hybrid(user_id, queries[0], k)
 
+    # Phase 24: cache the fused multi-query result (per-user, version-invalidated).
+    key = cache.content_hash(
+        "mq", user_id, k, cache.user_version(user_id), *queries
+    )
+    cached = cache.retrieval.get(key)
+    if cached is not None:
+        return cached
+
     candidates = max(_CANDIDATES, k)
     ranked_lists: list[tuple[str, list[dict]]] = []
     for i, q in enumerate(queries):
         ranked_lists.append((f"vector{i}", db.search(user_id, embed_text(q), candidates)))
         ranked_lists.append((f"keyword{i}", db.keyword_search(user_id, q, candidates)))
-    return _fuse(ranked_lists, k)
+    fused = _fuse(ranked_lists, k)
+    cache.retrieval.set(key, fused)
+    return fused
 
 
 def search_expanded(

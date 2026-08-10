@@ -157,13 +157,23 @@ Human feedback capture, data flywheel, eval-set growth from production.
 ## Goal
 Stop paying (in time and quota) for work already done.
 
-## Implementation
-- **Prompt caching** for the stable system prompt + retrieved context.
-- **Embedding cache** keyed by a content hash (skip re-embedding identical text).
-- **Response cache** for identical (query, mode) pairs, with TTL.
+## Implementation (as built)
+- **Embedding cache** — content-hash → vector (LRU). Deterministic, so never
+  stale; query variants and repeated questions skip the embed API.
+- **Retrieval cache** — (user, mode, k, query) → hits, short TTL **plus** a
+  per-user version stamped in the key that every document write bumps, so a
+  cached result can never outlive its data.
+- **Response cache** — the stateless `/rag/chat` answer, keyed by the whole
+  request (safe: identical input → identical output), TTL + version invalidated.
+- `GET /cache/stats` exposes hit/miss per cache so the win is observable.
+
+> Note: real Gemini *prompt* caching (explicit `CachedContent`) needs a large
+> minimum token count and isn't reliable on the free tier, so we cache what's
+> both safe and useful (embeddings, retrieval, responses) instead of adding
+> fragile context-cache code.
 
 ## Concepts learned
-Prompt caching, content-addressed caching, cache invalidation/TTL.
+Content-addressed caching, LRU vs TTL, version-based invalidation, observability.
 
 ---
 
@@ -250,7 +260,7 @@ Rate limiting, abuse prevention, injection defense, token lifecycle, auditing.
 - ✅ Query rewriting + multi-query retrieval
 - ✅ Contextual retrieval at ingestion
 - ✅ User feedback flywheel
-- ⬜ Prompt / embedding / response caching
+- ✅ Embedding / retrieval / response caching
 - ⬜ Semantic memory + memory controls
 - ⬜ Multi-format ingestion
 - ⬜ Deeper tools (URL fetch, CSV)

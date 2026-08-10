@@ -39,6 +39,7 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `services/tracing.py` | Per-turn trace: timed spans + token estimate, persisted (Phase 20). |
 | `services/rewrite.py` | Query rewriting: expand a question into standalone/paraphrased queries (Phase 21). |
 | `services/context.py` | Contextual retrieval: model-written context line per chunk before embedding (Phase 22). |
+| `services/cache.py` | In-memory LRU/TTL caches: embeddings, retrieval, responses + hit/miss stats (Phase 24). |
 | `services/feedback.py` | 👍/👎 feedback store: rate answers, satisfaction stats, export negatives (Phase 23). |
 | `api/feedback.py` | `POST /feedback`, `GET /feedback/stats`, `GET /feedback/export`. |
 | `eval/export_feedback.py` | CLI: turn thumbs-down feedback into golden-set candidates. |
@@ -363,3 +364,25 @@ wrong) into golden-set *candidates* (question + downvoted answer + note; a human
 fills in the expected doc/fact, since that's the judgment the eval depends on).
 Ratings upsert by (user, thread, answer) so re-clicking or adding a note updates
 the row instead of inflating the counts.
+
+### Caching (Phase 24)
+
+`services/cache.py` provides two in-memory primitives (an `LRUCache` and a
+`TTLCache`, both thread-safe with hit/miss stats) and three caches:
+
+- **embeddings** (LRU, keyed by content hash + dim): identical text always embeds
+  to the same vector, so this is never stale — it wraps `gemini.embed_text`, so
+  query variants (Phase 21) and repeated questions skip the embed API. No TTL.
+- **retrieval** (TTL, keyed by user/mode/k/query **+ a per-user version**):
+  wraps `run_search` / `multi_query_search`. Every document write
+  (`insert`/`update`/`delete` in `db.py`) calls `cache.bump_user_version`, so a
+  cached result can never outlive the data it came from; the TTL is a backstop.
+- **responses** (TTL + version): the stateless `/rag/chat` answer, keyed by the
+  whole request. Safe because identical input ⇒ identical output; the stream is
+  buffered on the first call and replayed on a hit.
+
+`GET /cache/stats` returns hit/miss/size/hit_rate per cache, making the win
+observable. Real Gemini *prompt* caching (`CachedContent`) needs a large minimum
+token count and isn't reliable on the free tier, so we cache what's safe and
+useful instead of adding fragile context-cache code. `embed_texts` (bulk
+ingestion of new content) is intentionally not cached — it rarely sees repeats.

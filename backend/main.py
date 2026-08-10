@@ -21,7 +21,7 @@ from api.tokens import router as tokens_router
 from api.tools import router as tools_router
 from api.upload import router as upload_router
 from config import settings
-from services import auth, db, feedback, profile, threads, tracing
+from services import auth, cache, db, feedback, profile, threads, tracing
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -78,3 +78,9 @@ app.include_router(feedback_router)
 def health() -> dict:
     """Cheap endpoint for uptime pings and quick sanity checks."""
     return {"status": "ok"}
+
+
+@app.get("/cache/stats")
+def cache_stats() -> dict:
+    """Cache hit/miss stats (Phase 24) — makes the caching win observable."""
+    return cache.stats()
