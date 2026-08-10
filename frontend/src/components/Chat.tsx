@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import Markdown from "./Markdown";
 import {
   streamThreadChat,
   listThreads,
@@ -167,21 +168,47 @@ export default function Chat() {
   async function send() {
     const text = input.trim();
     if (!text || busy) return;
-    setBusy(true);
-
     let threadId = activeId;
     if (threadId == null) {
       const t = await createThread();
       threadId = t.id;
       setActiveId(t.id);
     }
-
-    setMessages((prev) => [
-      ...prev,
-      { role: "user", content: text },
-      { role: "assistant", content: "", steps: [] },
-    ]);
     setInput("");
+    await streamTurn(threadId, text, false);
+  }
+
+  // Phase 28: re-answer the last question in place — drop the previous answer
+  // and re-send the last user message with regenerate=true.
+  async function regenerate() {
+    if (busy || activeId == null) return;
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    if (!lastUser) return;
+    setMessages((prev) => {
+      const copy = [...prev];
+      while (copy.length && copy[copy.length - 1].role === "assistant") copy.pop();
+      return copy;
+    });
+    await streamTurn(activeId, lastUser.content, true);
+  }
+
+  // Load a past user message back into the composer to edit and resend.
+  function editMessage(content: string) {
+    setInput(content);
+    inputRef.current?.focus();
+  }
+
+  async function streamTurn(threadId: number, text: string, regen: boolean) {
+    setBusy(true);
+    setMessages((prev) =>
+      regen
+        ? [...prev, { role: "assistant", content: "", steps: [] }]
+        : [
+            ...prev,
+            { role: "user", content: text },
+            { role: "assistant", content: "", steps: [] },
+          ]
+    );
 
     const updateAssistant = (fn: (m: DisplayMessage) => DisplayMessage) => {
       setMessages((prev) => {
@@ -292,7 +319,8 @@ export default function Chat() {
           content: m.content + `\n\n[error] ${msg}`,
         })),
         },
-        controller.signal
+        controller.signal,
+        regen
       );
     } finally {
       // Runs on normal completion AND on stop/abort: reset state and refresh
@@ -466,13 +494,32 @@ export default function Chat() {
               {(m.content || m.role === "user" || busy) && (
                 <div
                   className={
-                    "inline-block max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm " +
+                    "inline-block max-w-[85%] rounded-2xl px-4 py-2 text-sm " +
                     (m.role === "user"
-                      ? "bg-blue-600 text-white"
+                      ? "whitespace-pre-wrap bg-blue-600 text-white"
                       : "bg-white text-neutral-900 shadow-sm ring-1 ring-neutral-200")
                   }
                 >
-                  {m.content || (busy ? "…" : "")}
+                  {m.role === "assistant" ? (
+                    m.content ? (
+                      <Markdown text={m.content} />
+                    ) : (
+                      busy ? "…" : ""
+                    )
+                  ) : (
+                    m.content || (busy ? "…" : "")
+                  )}
+                </div>
+              )}
+              {/* Phase 28: edit-and-resend a past question. */}
+              {m.role === "user" && (
+                <div>
+                  <button
+                    onClick={() => editMessage(m.content)}
+                    className="mt-0.5 text-xs text-neutral-300 hover:text-neutral-500"
+                  >
+                    Edit
+                  </button>
                 </div>
               )}
               {m.sources && m.sources.length > 0 && (
@@ -480,10 +527,29 @@ export default function Chat() {
               )}
               {m.trace && <TraceView trace={m.trace} />}
               {m.role === "assistant" && m.content && !(busy && i === messages.length - 1) && (
-                <Feedback
-                  rating={m.rating}
-                  onRate={(rating, note) => rateMessage(i, rating, note)}
-                />
+                <>
+                  {/* Phase 28: copy the answer; regenerate the last one. */}
+                  <div className="mt-1 flex items-center gap-3 text-xs text-neutral-400">
+                    <button
+                      onClick={() => navigator.clipboard?.writeText(m.content)}
+                      className="hover:text-neutral-600"
+                    >
+                      Copy
+                    </button>
+                    {i === messages.length - 1 && !busy && (
+                      <button
+                        onClick={regenerate}
+                        className="hover:text-neutral-600"
+                      >
+                        Regenerate
+                      </button>
+                    )}
+                  </div>
+                  <Feedback
+                    rating={m.rating}
+                    onRate={(rating, note) => rateMessage(i, rating, note)}
+                  />
+                </>
               )}
             </div>
           ))}

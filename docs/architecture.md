@@ -700,6 +700,21 @@ execution — so the model answers "what's the total revenue?" from real numbers
 Both live in the single tool registry, so the in-app agent, tool-aware chat, and
 external MCP clients all gain them at once.
 
+## Phase 28: UX polish
+
+Making the app feel finished. Assistant answers now render through a small
+**dependency-free Markdown component** (`Markdown.tsx`) — headings, bold/italic,
+inline code, links, lists, and fenced code blocks (dark, horizontally scrollable,
+with a language label and a Copy button). We hand-rolled it rather than pulling in
+`react-markdown` + a highlighter, matching the project's light-dependency ethos;
+it covers what LLMs actually emit (true tokenized syntax colouring is the one
+thing skipped). **Message actions**: every answer has Copy and (on the latest)
+Regenerate; every question has Edit (loads it back into the composer). Regenerate
+is a clean re-answer, not a duplicate: the backend takes a `regenerate` flag,
+deletes the previous answer (`threads.delete_last_answer`), and re-answers the
+existing last question. The document manager (browse/search/edit/delete with
+metadata) already existed from Phases 3/5/6 and now accepts every Phase 26 format.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

@@ -131,6 +131,23 @@ def get_recent_messages(thread_id: int, limit: int) -> list[dict]:
     return [{"role": r[0], "content": r[1]} for r in rows]
 
 
+def delete_last_answer(thread_id: int) -> None:
+    """Delete the most recent assistant message in a thread (Phase 28 regenerate).
+
+    Regenerate re-answers the last question in place, so we drop the previous
+    answer first rather than piling a second answer onto the transcript.
+    """
+    with get_conn(register=False) as conn:
+        conn.execute(
+            "DELETE FROM messages WHERE id = ("
+            "  SELECT id FROM messages "
+            "  WHERE thread_id = %s AND role = 'assistant' "
+            "  ORDER BY id DESC LIMIT 1"
+            ");",
+            (thread_id,),
+        )
+
+
 def update_title(thread_id: int, title: str) -> None:
     with get_conn(register=False) as conn:
         conn.execute(

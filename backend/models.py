@@ -197,6 +197,10 @@ class ThreadChatRequest(BaseModel):
 
     content: str
     mode: Literal["chat", "rag", "agent", "plan", "team"] = "chat"
+    # Phase 28: re-answer the last question instead of adding a new one. The
+    # previous answer is dropped and `content` (the existing last user message)
+    # is re-answered — so the turn isn't duplicated in the transcript.
+    regenerate: bool = False
 
 
 class ToolsChatRequest(BaseModel):

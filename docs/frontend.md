@@ -13,6 +13,7 @@ React + TypeScript + Tailwind (built with Vite). A single-page chat UI.
 | `src/components/TokenInspector.tsx` | Phase 1: live token metrics for typed text. |
 | `src/components/EmbedInspector.tsx` | Phase 2: embeds text and visualises the vector. |
 | `src/components/VectorSearch.tsx` | Phases 3, 5 & 26: add/upload docs (files + URL) + semantic search. |
+| `src/components/Markdown.tsx` | Phase 28: dependency-free Markdown renderer for answers (code blocks, lists, inline). |
 | `src/services/api.ts` | Calls chat, tokenize, embed, documents, search. |
 | `src/index.css` | Imports Tailwind. |
 | `vite.config.ts` | Dev server + proxy (`/api` → backend on :8000). |
@@ -130,6 +131,10 @@ The Chat tab is a two-pane layout: a **sidebar** listing conversations (with
     👎 reveals an optional note). Ratings post to `/feedback` (using the preceding
     user message as the question) and the sidebar shows a running **satisfaction
     rate** from `/feedback/stats`.
+  - *(Phase 28)* assistant answers render as **Markdown** (`Markdown.tsx`) and
+    carry **Copy** + (on the latest) **Regenerate** actions; user messages carry
+    **Edit** (loads the text back into the composer). Regenerate re-answers in
+    place via the `regenerate` flag on `streamThreadChat` — no duplicated turn.
 
 All streaming shares one SSE reader (`streamSse` in `api.ts`) with optional
 `onSources` / `onTrace` handlers. Messages are stored as `DisplayMessage` (a

@@ -502,11 +502,12 @@ export function streamThreadChat(
   content: string,
   mode: ChatMode,
   handlers: StreamHandlers,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  regenerate = false // Phase 28: re-answer the last question in place
 ): Promise<void> {
   return streamSse(
     `/api/threads/${threadId}/chat`,
-    { content, mode },
+    { content, mode, regenerate },
     handlers,
     signal
   );

@@ -180,9 +180,11 @@ system prompt on every turn (chat/RAG/agent). A hard `gemini_request_timeout`
 - `GET /threads` → list conversations (most recently active first).
 - `GET /threads/{id}/messages` → full history `[{role, content}]`.
 - `DELETE /threads/{id}` → delete (messages cascade).
-- `POST /threads/{id}/chat` — body `{ content, mode }` where `mode` is
-  `chat` | `rag` | `agent` | `plan`. Persists the user message, replays the last
-  `history_window` messages, then:
+- `POST /threads/{id}/chat` — body `{ content, mode, regenerate? }` where `mode`
+  is `chat` | `rag` | `agent` | `plan` | `team`. Normally persists the user
+  message; when `regenerate` is true (Phase 28) it instead drops the last
+  assistant answer and re-answers the existing last question in place (no
+  duplicate turn). Replays the last `history_window` messages, then:
   - `chat`: conversational streamed reply that can quietly call tools
     (`web_search`, `search_documents`, `calculate`, …) when a question needs
     live or computed facts — surfacing `tool_call` / `tool_result` events;

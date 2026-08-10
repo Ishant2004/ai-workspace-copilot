@@ -97,13 +97,17 @@ def thread_chat(
     if not threads.thread_exists(thread_id, user_id):
         raise HTTPException(status_code=404, detail="Thread not found")
 
-    # Persist the user's message first, so it's saved even if generation fails.
-    threads.add_message(thread_id, "user", request.content)
-
-    # Auto-title a brand-new thread from its first message.
-    history = threads.get_messages(thread_id)
-    if len(history) == 1:
-        threads.update_title(thread_id, _make_title(request.content))
+    if request.regenerate:
+        # Phase 28: re-answer the last question. Drop the previous answer; the
+        # user message is already in history, so we don't add it again.
+        threads.delete_last_answer(thread_id)
+    else:
+        # Persist the user's message first, so it's saved even if generation fails.
+        threads.add_message(thread_id, "user", request.content)
+        # Auto-title a brand-new thread from its first message.
+        history = threads.get_messages(thread_id)
+        if len(history) == 1:
+            threads.update_title(thread_id, _make_title(request.content))
 
     def event_stream() -> Iterator[str]:
         reply = ""

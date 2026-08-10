@@ -47,7 +47,7 @@ info (weather, news, GitHub, prices) off the live web via DuckDuckGo (no API key
 | 25 | Semantic memory + management UI | ✅ Done |
 | 26 | More ingestion formats (DOCX/MD/HTML/URL) | ✅ Done |
 | 27 | More tools (URL fetch, CSV) | ✅ Done |
-| 28 | UX polish | ⬜ Planned |
+| 28 | UX polish (markdown, message actions) | ✅ Done |
 | 29 | Security hardening | ⬜ Planned |
 
 **Run the eval** (from `backend/`):
