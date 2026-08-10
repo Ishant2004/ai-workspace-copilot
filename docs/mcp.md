@@ -13,6 +13,8 @@ external apps can search your knowledge base, do math, and get the time.
 | ---- | ----------- |
 | `search_documents(query)` | Semantic + keyword search over your stored documents (pgvector). |
 | `web_search(query)` | Live web search via DuckDuckGo (weather, news, GitHub, any current fact). |
+| `fetch_url(url)` | Fetch a web page and return its readable text. |
+| `analyze_csv(csv_text)` | Summarise CSV: columns, row count, numeric aggregates, sample rows. |
 | `calculate(expression)` | Safe arithmetic. |
 | `get_current_time()` | Current UTC time. |
 

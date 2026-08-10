@@ -46,7 +46,7 @@ info (weather, news, GitHub, prices) off the live web via DuckDuckGo (no API key
 | 24 | Caching (embedding / retrieval / response) | ✅ Done |
 | 25 | Semantic memory + management UI | ✅ Done |
 | 26 | More ingestion formats (DOCX/MD/HTML/URL) | ✅ Done |
-| 27 | More tools (URL fetch, CSV) | ⬜ Planned |
+| 27 | More tools (URL fetch, CSV) | ✅ Done |
 | 28 | UX polish | ⬜ Planned |
 | 29 | Security hardening | ⬜ Planned |
 

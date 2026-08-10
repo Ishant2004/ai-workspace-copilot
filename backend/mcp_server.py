@@ -58,5 +58,17 @@ def web_search(query: str) -> str:
     return tools.web_search(query)
 
 
+@mcp.tool()
+def fetch_url(url: str) -> str:
+    """Fetch a web page and return its readable text (truncated)."""
+    return tools.fetch_url(url)
+
+
+@mcp.tool()
+def analyze_csv(csv_text: str) -> str:
+    """Summarise CSV data: columns, row count, numeric aggregates, sample rows."""
+    return tools.analyze_csv(csv_text)
+
+
 if __name__ == "__main__":
     mcp.run()  # stdio transport

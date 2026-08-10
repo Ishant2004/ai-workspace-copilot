@@ -689,6 +689,17 @@ contextual retrieval, and metadata for free. Dependencies stay light: DOCX via
 heavy HTTP client or scraper. `POST /upload` dispatches on file extension;
 `POST /ingest/url` fetches a page and records its URL in metadata.
 
+## Phase 27: more tools
+
+The agent gets two tools that reach past a search snippet. **`fetch_url`** reads a
+whole page (reusing the Phase 26 fetcher), so the pattern becomes search → open a
+result → read → answer, instead of relying on the one-line snippet `web_search`
+returns. **`analyze_csv`** parses small CSV with the stdlib and returns computed
+aggregates (sum/mean/min/max) plus sample rows — deterministic, no code
+execution — so the model answers "what's the total revenue?" from real numbers.
+Both live in the single tool registry, so the in-app agent, tool-aware chat, and
+external MCP clients all gain them at once.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

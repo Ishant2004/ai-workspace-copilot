@@ -159,7 +159,8 @@ Returns `{ "total_documents": N }`. Used by the UI badge.
 - `POST /tools/chat` — body `{ message }`. Runs the tool-call loop and streams
   SSE events: `tool_call` `{name, args}`, `tool_result` `{name, result}`,
   `chunk` (final answer), `done`, `error`. Tools: `calculate`,
-  `get_current_time`, `search_documents`, `web_search` (live web).
+  `get_current_time`, `search_documents`, `web_search` (live web),
+  `fetch_url` (read a page), `analyze_csv` (tabular data).
 
 ### External MCP tools (Phase 15)
 - `GET /mcp/tools?refresh=false` → external tools discovered from the servers in
@@ -411,3 +412,20 @@ Legacy facts from before this phase (NULL embedding) are back-filled lazily the
 first time a large profile is read. Management: `GET /profile` now returns facts
 with ids and `DELETE /profile/{fact_id}` forgets one, so the UI can show a
 per-fact ✕. `preamble()` (all facts) is kept for any non-message-scoped caller.
+
+### More tools (Phase 27)
+
+Two agent tools that go deeper than a search snippet (`services/tools.py`):
+
+- **`fetch_url(url)`** — fetches a page (reusing `extract.fetch_url`) and returns
+  its readable text, truncated. Composes with `web_search`: search → pick a
+  result → fetch → read → answer.
+- **`analyze_csv(csv_text)`** — parses small CSV with the stdlib `csv` module and
+  returns columns, row count, per-numeric-column aggregates (sum/mean/min/max),
+  and sample rows. Deterministic (no code execution), so the model answers
+  tabular questions from *computed* numbers, not guesses.
+
+Both are registered in the local tool registry (declarations + `_FUNCTIONS`) and
+exposed via the MCP server, so the in-app agent, plain chat (tool-aware), and
+external MCP clients all get them. Verified: an agent given pasted sales CSV
+called `analyze_csv` and answered "total revenue is 4,000".

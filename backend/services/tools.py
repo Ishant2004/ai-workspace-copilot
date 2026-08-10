@@ -15,19 +15,25 @@ calling) so the mechanics are visible:
         └─ returns text ─► done
 
 Tools provided: search_documents (our knowledge base), web_search (live web via
-DuckDuckGo), calculate (safe math), get_current_time.
+DuckDuckGo), fetch_url (read a page), analyze_csv (tabular data), calculate (safe
+math), get_current_time.
 """
 
 import ast
+import csv
+import io
 import operator
 from collections.abc import Iterator
 from datetime import datetime, timezone
 
 from google.genai import types
 
-from services import gemini, mcp_client
+from services import extract, gemini, mcp_client
 from services.search import run_search
 from services.web import web_search
+
+# How much fetched page text to hand back to the model (keeps the prompt bounded).
+_FETCH_MAX_CHARS = 4000
 
 MAX_STEPS = 5  # safety cap on tool-call rounds
 
@@ -82,6 +88,63 @@ def search_documents(user_id: int, query: str) -> str:
     return "\n\n".join(
         f"[#{h['id']}] {h['title']}\n{h['text']}" for h in hits
     )
+
+
+def fetch_url(url: str) -> str:
+    """Fetch a web page and return its readable text (truncated).
+
+    web_search returns snippets + links; this lets the agent actually *read* a
+    page it found to pull out the answer. Composes: search → fetch → answer.
+    """
+    try:
+        text, title = extract.fetch_url(url)
+    except Exception as exc:  # noqa: BLE001 - surface a usable message to the model
+        return f"Could not fetch {url}: {exc}"
+    text = text.strip()
+    if not text:
+        return f"No readable text found at {url}."
+    snippet = text[:_FETCH_MAX_CHARS]
+    suffix = "…" if len(text) > _FETCH_MAX_CHARS else ""
+    return f"{title}\n{url}\n\n{snippet}{suffix}"
+
+
+def analyze_csv(csv_text: str) -> str:
+    """Parse small CSV text and return a summary: columns, row count, numeric
+    aggregates (sum/mean/min/max), and a few sample rows.
+
+    Deterministic (stdlib `csv`, no code execution), so the model can answer
+    tabular questions — totals, averages, counts — from real computed numbers
+    instead of guessing over raw rows.
+    """
+    try:
+        reader = csv.DictReader(io.StringIO(csv_text.strip()))
+        rows = list(reader)
+    except Exception as exc:  # noqa: BLE001
+        return f"Could not parse CSV: {exc}"
+    cols = reader.fieldnames or []
+    if not rows or not cols:
+        return "No tabular data found in the CSV."
+
+    lines = [f"Columns: {', '.join(cols)}", f"Rows: {len(rows)}"]
+    for col in cols:
+        nums = []
+        for r in rows:
+            raw = (r.get(col) or "").replace(",", "").replace("$", "").strip()
+            try:
+                nums.append(float(raw))
+            except ValueError:
+                pass
+        # Treat a column as numeric only if most of its values parse as numbers.
+        if len(nums) >= max(1, len(rows) // 2):
+            total = sum(nums)
+            lines.append(
+                f"{col}: sum={total:g}, mean={total / len(nums):g}, "
+                f"min={min(nums):g}, max={max(nums):g}"
+            )
+    lines.append("Sample rows:")
+    for r in rows[:5]:
+        lines.append("  " + ", ".join(f"{k}={v}" for k, v in r.items()))
+    return "\n".join(lines)
 
 
 # --- Declarations the model sees (name + JSON-schema args) -----------------
@@ -141,6 +204,41 @@ _DECLARATIONS = [
             required=["query"],
         ),
     ),
+    types.FunctionDeclaration(
+        name="fetch_url",
+        description=(
+            "Fetch a web page and return its readable text. Use after web_search "
+            "to actually read a promising result and extract the answer."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "url": types.Schema(
+                    type=types.Type.STRING,
+                    description="The full http(s) URL of the page to read.",
+                )
+            },
+            required=["url"],
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="analyze_csv",
+        description=(
+            "Summarise small CSV data: columns, row count, numeric aggregates "
+            "(sum/mean/min/max), and sample rows. Use to answer questions about "
+            "tabular data the user provides (totals, averages, counts)."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "csv_text": types.Schema(
+                    type=types.Type.STRING,
+                    description="The raw CSV text, including the header row.",
+                )
+            },
+            required=["csv_text"],
+        ),
+    ),
 ]
 
 # Tools that don't need a user context.
@@ -148,6 +246,8 @@ _FUNCTIONS = {
     "get_current_time": get_current_time,
     "calculate": calculate,
     "web_search": web_search,
+    "fetch_url": fetch_url,
+    "analyze_csv": analyze_csv,
 }
 
 
