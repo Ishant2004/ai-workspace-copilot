@@ -205,6 +205,12 @@ class ToolsChatRequest(BaseModel):
     message: str
 
 
+class UrlIngestRequest(BaseModel):
+    """Body of POST /ingest/url — a web page to fetch, extract, and index."""
+
+    url: str
+
+
 class FeedbackRequest(BaseModel):
     """Body of POST /feedback — a rating for one assistant answer (Phase 23)."""
 

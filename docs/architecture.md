@@ -677,6 +677,18 @@ everything, so nothing gets slower for the common case; legacy facts are embedde
 lazily on first use. Users also get control: facts are listed with ids and a
 per-fact ✕ deletes one (`DELETE /profile/{id}`), not just "forget everything".
 
+## Phase 26: multi-format ingestion
+
+Phase 5 ingested only PDFs. This generalises the *front* of the pipeline: any
+source — PDF, DOCX, Markdown, plain text, HTML, or a pasted URL — is turned into
+plain-text "segments" (`services/extract.py`), and a single shared back half
+(`services/ingest.py`) chunks, optionally contextualises (Phase 22), embeds, and
+stores them. So a new format is just a new extractor; it inherits chunking,
+contextual retrieval, and metadata for free. Dependencies stay light: DOCX via
+`python-docx`, HTML via the stdlib `html.parser`, URL fetch via `urllib` — no
+heavy HTTP client or scraper. `POST /upload` dispatches on file extension;
+`POST /ingest/url` fetches a page and records its URL in metadata.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

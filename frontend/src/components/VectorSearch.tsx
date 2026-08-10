@@ -5,7 +5,8 @@ import {
   deleteDocument,
   listDocuments,
   searchDocuments,
-  uploadPdf,
+  uploadFile,
+  ingestUrl,
   type DocMetadata,
   type DocumentItem,
   type SearchHit,
@@ -28,10 +29,12 @@ export default function VectorSearch() {
   const [docs, setDocs] = useState<DocumentItem[]>([]);
   const [dbError, setDbError] = useState<string | null>(null);
 
-  // PDF upload state.
+  // Document upload state (PDF/DOCX/MD/TXT/HTML) + URL ingestion (Phase 26).
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
+  const [url, setUrl] = useState("");
+  const [ingestingUrl, setIngestingUrl] = useState(false);
 
   // Form state — shared by "add" and "edit". editingId === null means adding.
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -92,9 +95,9 @@ export default function VectorSearch() {
     setUploading(true);
     setUploadMsg(null);
     try {
-      const res = await uploadPdf(file);
+      const res = await uploadFile(file);
       setUploadMsg(
-        `Ingested "${res.filename}" (${res.pages} page(s)) → ${res.chunks_stored} chunks stored.`
+        `Ingested "${res.filename}" (${res.pages} segment(s)) → ${res.chunks_stored} chunks stored.`
       );
       await refresh();
     } catch (e) {
@@ -102,6 +105,24 @@ export default function VectorSearch() {
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = ""; // allow re-upload
+    }
+  }
+
+  async function onIngestUrl() {
+    if (!url.trim()) return;
+    setIngestingUrl(true);
+    setUploadMsg(null);
+    try {
+      const res = await ingestUrl(url.trim());
+      setUploadMsg(
+        `Ingested "${res.filename}" → ${res.chunks_stored} chunks stored.`
+      );
+      setUrl("");
+      await refresh();
+    } catch (e) {
+      setUploadMsg(e instanceof Error ? e.message : "URL ingest failed");
+    } finally {
+      setIngestingUrl(false);
     }
   }
 
@@ -199,18 +220,19 @@ export default function VectorSearch() {
         </div>
       </section>
 
-      {/* Upload a PDF (Phase 5) */}
+      {/* Ingest a document or web page (Phase 5 / 26) */}
       <section className="space-y-2 rounded-lg border border-neutral-200 bg-white p-4">
-        <h2 className="text-sm font-semibold">Upload a PDF</h2>
+        <h2 className="text-sm font-semibold">Add a document</h2>
         <p className="text-xs text-neutral-500">
-          The PDF is split into overlapping chunks, each embedded and stored as
-          a document — so its content becomes searchable and usable for RAG.
+          Upload a file (PDF, DOCX, Markdown, text, or HTML) or paste a URL. The
+          content is split into overlapping chunks, each embedded and stored — so
+          it becomes searchable and usable for RAG.
         </p>
         <div className="flex items-center gap-3">
           <input
             ref={fileInputRef}
             type="file"
-            accept="application/pdf"
+            accept=".pdf,.docx,.md,.markdown,.txt,.html,.htm"
             disabled={uploading}
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -221,6 +243,26 @@ export default function VectorSearch() {
           {uploading && (
             <span className="text-sm text-neutral-500">Ingesting…</span>
           )}
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onIngestUrl();
+            }}
+            placeholder="https://example.com/article"
+            disabled={ingestingUrl}
+            className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm disabled:opacity-40"
+          />
+          <button
+            onClick={onIngestUrl}
+            disabled={ingestingUrl || !url.trim()}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+          >
+            {ingestingUrl ? "Ingesting…" : "Add URL"}
+          </button>
         </div>
         {uploadMsg && <p className="text-sm text-neutral-600">{uploadMsg}</p>}
       </section>

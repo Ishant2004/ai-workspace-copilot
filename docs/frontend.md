@@ -12,7 +12,7 @@ React + TypeScript + Tailwind (built with Vite). A single-page chat UI.
 | `src/components/Chat.tsx` | Chat UI: thread sidebar, RAG toggle, sources (Phases 0/4/9). |
 | `src/components/TokenInspector.tsx` | Phase 1: live token metrics for typed text. |
 | `src/components/EmbedInspector.tsx` | Phase 2: embeds text and visualises the vector. |
-| `src/components/VectorSearch.tsx` | Phases 3 & 5: add/upload docs + semantic search. |
+| `src/components/VectorSearch.tsx` | Phases 3, 5 & 26: add/upload docs (files + URL) + semantic search. |
 | `src/services/api.ts` | Calls chat, tokenize, embed, documents, search. |
 | `src/index.css` | Imports Tailwind. |
 | `vite.config.ts` | Dev server + proxy (`/api` → backend on :8000). |
@@ -81,10 +81,11 @@ The list is the source of truth for the doc count badge; it refreshes on load
 and after every add/edit/delete. If the DB isn't reachable it shows a friendly
 hint about `DATABASE_URL`.
 
-**Upload a PDF (Phase 5):** a file input sends the chosen PDF to `POST
-/api/upload` as multipart form data (`uploadPdf` in `api.ts`). On success it
-shows how many chunks were stored and refreshes the list — the new chunks appear
-as `filename · pN · chunk i/n` documents.
+**Add a document (Phases 5, 26):** a file input sends the chosen file (PDF,
+DOCX, Markdown, text, or HTML) to `POST /api/upload` as multipart form data
+(`uploadFile` in `api.ts`), and a URL box sends a link to `POST /api/ingest/url`
+(`ingestUrl`). On success it shows how many chunks were stored and refreshes the
+list — the new chunks appear as `filename · pN · chunk i/n` documents.
 
 **Metadata badges (Phase 6):** stored documents and search results render a
 small `MetaLine` — a `filename` and `p.N` badge — read from each item's

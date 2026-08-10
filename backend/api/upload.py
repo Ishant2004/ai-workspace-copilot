@@ -1,112 +1,58 @@
-"""PDF upload & ingestion endpoint (Phase 5; metadata-aware in Phase 6).
+"""Document upload & ingestion endpoint (Phase 5; multi-format in Phase 26).
 
-The ingestion pipeline, end to end:
+Accepts a file, extracts its text (PDF, DOCX, Markdown, plain text, or HTML),
+then hands off to the shared ingestion pipeline:
 
-    PDF bytes -> extract text per page (pypdf)
-              -> recursively chunk each page (boundary-aware, with overlap)
-              -> embed all chunks (batched)
-              -> store each chunk as a document row WITH metadata
+    file bytes -> extract text (services/extract.py, per format)
+               -> chunk -> (contextualise) -> embed -> store (services/ingest.py)
 
-Phase 6 additions:
-  - recursive (boundary-aware) chunking instead of blind fixed windows
-  - per-page extraction so each chunk records its source page
-  - metadata (filename, page, chunk index, source, timestamp) in a JSONB column
-
-After this, the uploaded PDF's content is immediately searchable (Phase 3) and
-usable as grounding for RAG answers (Phase 4) — the chunks are documents like
-any other, now carrying provenance.
+So an uploaded document of any supported type becomes immediately searchable
+(Phase 3) and usable as RAG grounding (Phase 4), carrying provenance metadata.
 """
-
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 
 from api.deps import current_user_id
-from config import settings
 from models import UploadResponse
-from services import context, db
-from services.chunking import recursive_chunk
-from services.gemini import embed_texts
-from services.pdf import extract_pages
+from services import db, extract, ingest
 
 router = APIRouter()
 
 
 @router.post("/upload", response_model=UploadResponse)
-async def upload_pdf(
+async def upload_document(
     file: UploadFile, user_id: int = Depends(current_user_id)
 ) -> UploadResponse:
-    if not (file.filename or "").lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Please upload a .pdf file")
-
-    pdf_bytes = await file.read()
-    filename = file.filename or "upload.pdf"
-
-    # 1. Extract text page by page (so we can record page numbers).
-    try:
-        pages = extract_pages(pdf_bytes)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Could not read PDF: {exc}")
-
-    # 2. Chunk each page independently, remembering which page each chunk is on.
-    uploaded_at = datetime.now(timezone.utc).isoformat()
-    chunk_texts: list[str] = []
-    chunk_meta: list[dict] = []
-    for page_no, page_text in enumerate(pages, start=1):
-        for piece in recursive_chunk(
-            page_text, settings.chunk_size, settings.chunk_overlap
-        ):
-            chunk_texts.append(piece)
-            chunk_meta.append(
-                {
-                    "source": "pdf",
-                    "filename": filename,
-                    "page": page_no,
-                    "uploaded_at": uploaded_at,
-                }
-            )
-
-    if not chunk_texts:
+    filename = file.filename or "upload"
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+    if ext not in extract.SUPPORTED_EXTS:
         raise HTTPException(
             status_code=400,
-            detail="No extractable text found (the PDF may be scanned images).",
+            detail=f"Unsupported file type. Supported: {', '.join(sorted(extract.SUPPORTED_EXTS))}",
         )
 
-    # 3. Optionally contextualise each chunk (Phase 22): prepend a model-written
-    #    sentence situating it in the document, and embed *that*. We still store
-    #    the original chunk text — only the embedding sees the context. Skipped
-    #    above the cap (per-chunk LLM calls are costly on the free tier).
-    contexts: list[str | None] = [None] * len(chunk_texts)
-    if settings.contextual_retrieval and len(chunk_texts) <= settings.contextual_max_chunks:
-        full_text = "\n\n".join(chunk_texts)
-        contexts = context.contextualize_all(filename, full_text, chunk_texts)
-        embed_input = [
-            context.contextual_text(ctx, text)
-            for ctx, text in zip(contexts, chunk_texts)
-        ]
-    else:
-        embed_input = chunk_texts
+    data = await file.read()
 
-    # 4. Embed every chunk in one batched call.
-    embeddings = embed_texts(embed_input)
+    # 1. Extract text segments for this format (PDF → per page; else one segment).
+    try:
+        segments = extract.extract_file(filename, data)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not read file: {exc}")
 
-    # 5. Store each chunk as a document with its metadata (original text; any
-    #    context line kept in metadata for transparency).
-    total = len(chunk_texts)
-    rows = []
-    for i, (text, embedding, meta, ctx) in enumerate(
-        zip(chunk_texts, embeddings, chunk_meta, contexts)
-    ):
-        meta = {**meta, "chunk_index": i}
-        if ctx:
-            meta["context"] = ctx
-        title = f"{filename} · p{meta['page']} · chunk {i + 1}/{total}"
-        rows.append((title, text, embedding, meta))
-    stored = db.insert_documents(user_id, rows)
+    if not any(s.strip() for s in segments):
+        raise HTTPException(
+            status_code=400,
+            detail="No extractable text found (a scanned PDF or empty file?).",
+        )
+
+    # 2. Shared pipeline: chunk → (contextualise) → embed → store.
+    stored = ingest.ingest_segments(user_id, filename, ext, segments)
+    if stored == 0:
+        raise HTTPException(status_code=400, detail="No extractable text found.")
 
     return UploadResponse(
         filename=filename,
-        pages=len(pages),
+        pages=len(segments),
         chunks_stored=stored,
         total_documents=db.count_documents(user_id),
     )

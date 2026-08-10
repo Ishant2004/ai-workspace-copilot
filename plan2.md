@@ -262,7 +262,7 @@ Rate limiting, abuse prevention, injection defense, token lifecycle, auditing.
 - ✅ User feedback flywheel
 - ✅ Embedding / retrieval / response caching
 - ✅ Semantic memory + memory controls
-- ⬜ Multi-format ingestion
+- ✅ Multi-format ingestion
 - ⬜ Deeper tools (URL fetch, CSV)
 - ⬜ Polished, production-feel UX
 - ⬜ Rate limiting, guardrails, audit logging

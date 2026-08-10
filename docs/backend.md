@@ -21,7 +21,10 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `api/auth.py` | `/auth/signup`, `/auth/login`, `/auth/me` — email/password + JWT. |
 | `api/deps.py` | `current_user_id` dependency (decodes the Bearer token). |
 | `services/auth.py` | bcrypt password hashing + JWT create/decode; users table. |
-| `api/upload.py` | `POST /upload` — PDF ingestion pipeline (Phase 5). |
+| `api/upload.py` | `POST /upload` — multi-format ingestion (PDF/DOCX/MD/TXT/HTML) (Phases 5, 26). |
+| `api/ingest.py` | `POST /ingest/url` — fetch a web page and ingest it (Phase 26). |
+| `services/extract.py` | Per-format text extraction (DOCX, HTML→text, URL fetch) (Phase 26). |
+| `services/ingest.py` | Shared pipeline: chunk → contextualise → embed → store (Phase 26). |
 | `prompts.py` | Prompt templates (the RAG grounding system prompt). |
 | `services/gemini.py` | Gemini SDK: chat, tokens, single + batch embeddings. |
 | `services/db.py` | Vector DB access: init, insert, cosine + keyword search. |
@@ -218,20 +221,27 @@ instruction containing that context → `stream_chat(messages, system_prompt)`.
 The `system_instruction` support was added to `services/gemini.py` for this.
 
 ### `POST /upload`
-Ingest a PDF. Multipart form field `file` (a `.pdf`).
+Ingest a document. Multipart form field `file`; supported: **PDF, DOCX, Markdown,
+plain text, HTML** (Phase 26).
 Response:
 ```json
 { "filename": "handbook.pdf", "pages": 2, "chunks_stored": 12, "total_documents": 12 }
 ```
-Pipeline (Phase 6): `services/pdf.extract_pages` (per page) →
-`services/chunking.recursive_chunk` per page (`chunk_size`/`chunk_overlap` from
-config) → *(Phase 22, optional)* `services/context.contextualize_all` →
-`services/gemini.embed_texts` (batched) → `db.insert_documents` (bulk, with
-metadata). Each chunk becomes a normal document row carrying `metadata` =
+`api/upload.py` dispatches on extension via `services/extract.extract_file`
+(PDF → one segment per page; other formats → a single segment), then the shared
+`services/ingest.ingest_segments` runs the pipeline: `recursive_chunk` per
+segment → *(Phase 22, optional)* `context.contextualize_all` → `embed_texts`
+(batched) → `db.insert_documents`. Each chunk carries `metadata` =
 `{source, filename, page, chunk_index, uploaded_at}` (plus `context` when
-contextual retrieval is on), so it's immediately searchable and RAG-usable and
-traceable to a page. Returns 400 for non-PDFs or PDFs with no extractable text
-(e.g. scanned images).
+contextual retrieval is on). Returns 400 for unsupported types or files with no
+extractable text (e.g. scanned PDFs).
+
+### `POST /ingest/url`
+Ingest a web page. Body `{ url }`. Fetches the page (`urllib`, bounded size +
+timeout), extracts visible text with a stdlib HTML parser (scripts/styles
+stripped, `<title>` captured), then runs the same `ingest_segments` pipeline with
+`source: "url"` and the page URL recorded in `metadata.source_url`. Same response
+shape as `/upload`. 400 on fetch/parse failure or empty content.
 
 ### Metadata (Phase 6)
 `documents` has a `metadata JSONB` column. Search and list responses include a

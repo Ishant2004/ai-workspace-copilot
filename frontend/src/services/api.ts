@@ -230,13 +230,24 @@ export interface UploadResult {
   total_documents: number;
 }
 
-// Upload a PDF. The backend extracts text, chunks it, embeds every chunk, and
-// stores them as searchable documents. Sent as multipart/form-data.
-export async function uploadPdf(file: File): Promise<UploadResult> {
+// Upload a document (PDF, DOCX, Markdown, text, or HTML). The backend extracts
+// text, chunks it, embeds every chunk, and stores them as searchable documents.
+export async function uploadFile(file: File): Promise<UploadResult> {
   const form = new FormData();
   form.append("file", file);
   const response = await apiFetch("/api/upload", { method: "POST", body: form });
   if (!response.ok) throw new Error(await errorText(response, "Upload"));
+  return response.json();
+}
+
+// Ingest a web page by URL (Phase 26): fetch, extract text, chunk, embed, store.
+export async function ingestUrl(url: string): Promise<UploadResult> {
+  const response = await apiFetch("/api/ingest/url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!response.ok) throw new Error(await errorText(response, "URL ingest"));
   return response.json();
 }
 

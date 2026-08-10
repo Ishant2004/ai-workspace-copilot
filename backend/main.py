@@ -14,6 +14,7 @@ from api.chat import router as chat_router
 from api.documents import router as documents_router
 from api.embed import router as embed_router
 from api.feedback import router as feedback_router
+from api.ingest import router as ingest_router
 from api.profile import router as profile_router
 from api.rag import router as rag_router
 from api.threads import router as threads_router
@@ -68,6 +69,7 @@ app.include_router(embed_router)
 app.include_router(documents_router)
 app.include_router(rag_router)
 app.include_router(upload_router)
+app.include_router(ingest_router)
 app.include_router(threads_router)
 app.include_router(tools_router)
 app.include_router(profile_router)
