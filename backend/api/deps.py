@@ -5,9 +5,10 @@
 data endpoint depends on it, so a request can only ever touch its own rows.
 """
 
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 
-from services import auth
+from config import settings
+from services import auth, ratelimit
 
 
 def current_user_id(authorization: str = Header(default="")) -> int:
@@ -18,4 +19,21 @@ def current_user_id(authorization: str = Header(default="")) -> int:
     user_id = auth.decode_token(authorization[len(prefix):])
     if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return user_id
+
+
+def rate_limited_user_id(user_id: int = Depends(current_user_id)) -> int:
+    """Like current_user_id, but also enforces the per-user rate limit (Phase 29).
+
+    Use on expensive endpoints (chat, upload, ingest). Over the limit → 429.
+    """
+    if not ratelimit.allow(
+        f"user:{user_id}",
+        settings.rate_limit_max,
+        settings.rate_limit_window_seconds,
+    ):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded — please slow down and retry shortly.",
+        )
     return user_id

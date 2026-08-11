@@ -492,6 +492,20 @@ export async function getFeedbackStats(): Promise<FeedbackStats> {
   return r.json();
 }
 
+// Phase 29: exchange a still-valid token for a fresh one (sliding session), so
+// an active user isn't logged out mid-use. Best-effort — ignored on failure.
+export async function refreshSession(): Promise<void> {
+  try {
+    const r = await apiFetch("/api/auth/refresh", { method: "POST" });
+    if (r.ok) {
+      const body = await r.json();
+      if (body.token) authToken.set(body.token);
+    }
+  } catch {
+    /* non-critical */
+  }
+}
+
 export type ChatMode = "chat" | "rag" | "agent" | "plan" | "team";
 
 // Send one new message to a thread. The backend loads history itself and

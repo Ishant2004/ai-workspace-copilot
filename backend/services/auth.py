@@ -80,6 +80,15 @@ def authenticate(email: str, password: str) -> dict | None:
     return None
 
 
+def email_for(user_id: int) -> str | None:
+    """Look up a user's email by id (used when refreshing a token)."""
+    with get_conn(register=False) as conn:
+        row = conn.execute(
+            "SELECT email FROM users WHERE id = %s;", (user_id,)
+        ).fetchone()
+    return row[0] if row else None
+
+
 # --- Tokens ----------------------------------------------------------------
 
 

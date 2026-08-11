@@ -31,6 +31,17 @@ class Settings(BaseSettings):
     jwt_secret: str = "dev-only-insecure-secret-please-override-in-production"
     jwt_expire_hours: int = 720  # token lifetime (30 days)
 
+    # --- Security hardening (Phase 29) ---
+    # Per-user rate limit on expensive endpoints (chat, upload, ingest): at most
+    # `rate_limit_max` requests per `rate_limit_window_seconds`.
+    rate_limit_max: int = 30
+    rate_limit_window_seconds: int = 60
+    # Tighter limit for unauthenticated auth endpoints, keyed by client IP.
+    auth_rate_limit_max: int = 10
+    # Input size caps (reject oversized input before it reaches the model / DB).
+    max_message_chars: int = 8000
+    max_upload_bytes: int = 10_000_000  # 10 MB
+
     # --- Token inspector settings (Phase 1) ---
     # How many tokens the model can hold in one request. Gemini Flash models
     # have a ~1M token context window. Used to show "% of context used".

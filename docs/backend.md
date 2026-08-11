@@ -43,6 +43,9 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `services/rewrite.py` | Query rewriting: expand a question into standalone/paraphrased queries (Phase 21). |
 | `services/context.py` | Contextual retrieval: model-written context line per chunk before embedding (Phase 22). |
 | `services/cache.py` | In-memory LRU/TTL caches: embeddings, retrieval, responses + hit/miss stats (Phase 24). |
+| `services/ratelimit.py` | In-process per-key fixed-window rate limiter (Phase 29). |
+| `services/audit.py` | Audit log: record + list security events (Phase 29). |
+| `services/guard.py` | Heuristic prompt-injection detector for retrieved content (Phase 29). |
 | `services/feedback.py` | 👍/👎 feedback store: rate answers, satisfaction stats, export negatives (Phase 23). |
 | `api/feedback.py` | `POST /feedback`, `GET /feedback/stats`, `GET /feedback/export`. |
 | `eval/export_feedback.py` | CLI: turn thumbs-down feedback into golden-set candidates. |
@@ -201,6 +204,9 @@ system prompt on every turn (chat/RAG/agent). A hard `gemini_request_timeout`
   (`[{id, mode, total_ms, spans, tokens, created_at}]`), owner-scoped.
 - `GET /profile` → durable facts with ids (`{facts: [{id, fact}]}`).
   `DELETE /profile` clears all; `DELETE /profile/{fact_id}` forgets one (Phase 25).
+- `POST /auth/refresh` → a fresh token for a still-valid one (sliding session).
+  `GET /audit` → this user's recent security events. `/auth/signup` + `/auth/login`
+  are rate-limited per client IP (Phase 29).
 - `POST /feedback` — rate an answer (`{thread_id?, question, answer, rating, note?}`,
   `rating` ∈ `up`/`down`); upserts by (user, thread, answer) so re-rating doesn't
   double-count. `GET /feedback/stats` → `{up, down, total, satisfaction_rate}`.
@@ -431,3 +437,26 @@ Both are registered in the local tool registry (declarations + `_FUNCTIONS`) and
 exposed via the MCP server, so the in-app agent, plain chat (tool-aware), and
 external MCP clients all get them. Verified: an agent given pasted sales CSV
 called `analyze_csv` and answered "total revenue is 4,000".
+
+### Security hardening (Phase 29)
+
+- **Rate limiting** (`services/ratelimit.py`) — a thread-safe in-process
+  fixed-window counter (no Redis needed on one process). The `rate_limited_user_id`
+  dependency guards expensive endpoints (chat, upload, ingest) per user; auth
+  endpoints are limited per client IP. Over the limit → **429**.
+- **Input caps** — messages over `MAX_MESSAGE_CHARS` and uploads over
+  `MAX_UPLOAD_BYTES` are rejected with **413** before touching the model or DB.
+- **Prompt-injection guardrails** — the RAG system prompt now explicitly says the
+  context is untrusted *data*, never instructions; `services/guard.py` also
+  heuristically flags retrieved chunks that look injected ("ignore previous
+  instructions", "system prompt", …) and records a `rag.injection_flagged` audit
+  event. Detection-only (heuristics have false positives) — the prompt is the
+  real defence.
+- **Audit log** (`services/audit.py`) — signups, logins (incl. failures),
+  uploads, URL ingests, and injection flags are written to an `audit_log` table;
+  `GET /audit` returns the user's own events. Best-effort (never breaks the
+  action).
+- **Token refresh** — `POST /auth/refresh` exchanges a still-valid token for a
+  fresh one (sliding session). Honest scope note: a production system would use a
+  separate, server-side revocable refresh token; this is the lightweight version
+  for a $0 single service.

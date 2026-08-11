@@ -4,7 +4,12 @@ import TokenInspector from "./components/TokenInspector";
 import EmbedInspector from "./components/EmbedInspector";
 import VectorSearch from "./components/VectorSearch";
 import Auth from "./components/Auth";
-import { authToken, logout, setAuthErrorHandler } from "./services/api";
+import {
+  authToken,
+  logout,
+  refreshSession,
+  setAuthErrorHandler,
+} from "./services/api";
 
 type Tab = "chat" | "tokens" | "embed" | "search";
 
@@ -21,6 +26,12 @@ export default function App() {
   // A 401 anywhere (expired/invalid token) drops back to the login screen.
   useEffect(() => {
     setAuthErrorHandler(() => setAuthed(false));
+  }, []);
+
+  // Phase 29: slide the session on load so an active user gets a fresh token
+  // instead of being logged out when the old one eventually expires.
+  useEffect(() => {
+    if (authToken.get()) refreshSession();
   }, []);
 
   function signOut() {

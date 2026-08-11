@@ -12,16 +12,17 @@ So an uploaded document of any supported type becomes immediately searchable
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 
-from api.deps import current_user_id
+from api.deps import rate_limited_user_id
+from config import settings
 from models import UploadResponse
-from services import db, extract, ingest
+from services import audit, db, extract, ingest
 
 router = APIRouter()
 
 
 @router.post("/upload", response_model=UploadResponse)
 async def upload_document(
-    file: UploadFile, user_id: int = Depends(current_user_id)
+    file: UploadFile, user_id: int = Depends(rate_limited_user_id)
 ) -> UploadResponse:
     filename = file.filename or "upload"
     ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
@@ -32,6 +33,12 @@ async def upload_document(
         )
 
     data = await file.read()
+    # Phase 29: reject oversized uploads.
+    if len(data) > settings.max_upload_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large (max {settings.max_upload_bytes // 1_000_000} MB).",
+        )
 
     # 1. Extract text segments for this format (PDF → per page; else one segment).
     try:
@@ -50,6 +57,7 @@ async def upload_document(
     if stored == 0:
         raise HTTPException(status_code=400, detail="No extractable text found.")
 
+    audit.log("document.upload", user_id, {"filename": filename, "chunks": stored})
     return UploadResponse(
         filename=filename,
         pages=len(segments),

@@ -22,7 +22,7 @@ from collections.abc import Iterator
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from api.deps import current_user_id
+from api.deps import current_user_id, rate_limited_user_id
 from config import settings
 from models import (
     Message,
@@ -37,7 +37,16 @@ from prompts import (
     build_rag_system_prompt,
     format_context_block,
 )
-from services import coordinator, planner, profile, threads, tools, tracing
+from services import (
+    audit,
+    coordinator,
+    guard,
+    planner,
+    profile,
+    threads,
+    tools,
+    tracing,
+)
 from services.gemini import stream_chat
 from services.search import search_expanded
 
@@ -92,10 +101,17 @@ def delete_thread(
 def thread_chat(
     thread_id: int,
     request: ThreadChatRequest,
-    user_id: int = Depends(current_user_id),
+    user_id: int = Depends(rate_limited_user_id),
 ) -> StreamingResponse:
     if not threads.thread_exists(thread_id, user_id):
         raise HTTPException(status_code=404, detail="Thread not found")
+
+    # Phase 29: cap message size before it reaches the model / DB.
+    if len(request.content) > settings.max_message_chars:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Message too long (max {settings.max_message_chars} characters).",
+        )
 
     if request.regenerate:
         # Phase 28: re-answer the last question. Drop the previous answer; the
@@ -143,6 +159,14 @@ def thread_chat(
                 hits = search_expanded(
                     user_id, request.content, 4, history_text
                 )
+                # Phase 29: flag any retrieved chunk that looks like a prompt
+                # injection. The RAG prompt already neutralises it (context is
+                # treated as data); here we record the signal for review.
+                flagged = [h["id"] for h in hits if guard.looks_injected(h["text"])]
+                if flagged:
+                    audit.log(
+                        "rag.injection_flagged", user_id, {"doc_ids": flagged}
+                    )
                 trace.add(
                     "retrieval",
                     round((time.perf_counter() - r_start) * 1000),

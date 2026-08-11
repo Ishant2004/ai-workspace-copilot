@@ -715,6 +715,20 @@ deletes the previous answer (`threads.delete_last_answer`), and re-answers the
 existing last question. The document manager (browse/search/edit/delete with
 metadata) already existed from Phases 3/5/6 and now accepts every Phase 26 format.
 
+## Phase 29: security hardening
+
+The last step before this is safe to expose. **Rate limiting** (in-process
+fixed-window, no Redis) caps expensive endpoints per user and auth endpoints per
+IP → 429. **Input caps** reject oversized messages/uploads with 413 before they
+reach the model or DB. **Prompt-injection guardrails**: the RAG prompt now states
+the retrieved context is untrusted *data* (never instructions), and a heuristic
+detector flags suspicious chunks into the audit log — defence in depth, with the
+prompt as the real barrier. An **audit log** records signups, logins, uploads,
+ingests, and injection flags (`GET /audit`). And **token refresh**
+(`POST /auth/refresh`) slides an active user's session. Each piece is small and
+in-process — appropriate for a $0 single service — and the honest limits (e.g. no
+server-side revocable refresh tokens) are documented rather than hidden.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

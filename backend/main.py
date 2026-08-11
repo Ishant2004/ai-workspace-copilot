@@ -22,7 +22,7 @@ from api.tokens import router as tokens_router
 from api.tools import router as tools_router
 from api.upload import router as upload_router
 from config import settings
-from services import auth, cache, db, feedback, profile, threads, tracing
+from services import audit, auth, cache, db, feedback, profile, threads, tracing
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -40,9 +40,10 @@ async def lifespan(app: FastAPI):
             auth.init_auth()
             tracing.init_traces()
             feedback.init_feedback()
+            audit.init_audit()
             logger.info(
-                "DB tables (vector, threads, profile, users, traces, feedback) "
-                "initialised."
+                "DB tables (vector, threads, profile, users, traces, feedback, "
+                "audit) initialised."
             )
         except Exception as exc:
             logger.warning("Could not initialise database: %s", exc)

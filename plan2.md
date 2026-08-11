@@ -265,4 +265,4 @@ Rate limiting, abuse prevention, injection defense, token lifecycle, auditing.
 - ✅ Multi-format ingestion
 - ✅ Deeper tools (URL fetch, CSV)
 - ✅ Polished, production-feel UX
-- ⬜ Rate limiting, guardrails, audit logging
+- ✅ Rate limiting, guardrails, audit logging
