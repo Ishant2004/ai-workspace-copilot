@@ -54,6 +54,18 @@ info (weather, news, GitHub, prices) off the live web via DuckDuckGo (no API key
 flywheel, caching, semantic memory, multi-format ingestion, deeper tools,
 polished UX, and security hardening.
 
+### Part 3 — agentic coding, skills & per-chat knowledge ([`plan3.md`](plan3.md))
+
+| Phase | Feature | Status |
+| ----- | ------- | ------ |
+| 30 | Chat-scoped document attachments (backend) | ⬜ Planned |
+| 31 | Attach-a-file UI + auto-RAG in chat | ⬜ Planned |
+| 32 | Workspace + read-only code tools | ⬜ Planned |
+| 33 | Code-editing tools (diffs + confinement) | ⬜ Planned |
+| 34 | Coding agent (`code` mode) | ⬜ Planned |
+| 35 | Skills framework (`use_skill`) | ⬜ Planned |
+| 36 | Skill library | ⬜ Planned |
+
 **Run the eval** (from `backend/`):
 
 ```bash
