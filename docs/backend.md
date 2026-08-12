@@ -207,6 +207,10 @@ system prompt on every turn (chat/RAG/agent). A hard `gemini_request_timeout`
 - `POST /auth/refresh` → a fresh token for a still-valid one (sliding session).
   `GET /audit` → this user's recent security events. `/auth/signup` + `/auth/login`
   are rate-limited per client IP (Phase 29).
+- `POST /threads/{id}/attach` — attach a file (multipart `file`) to *one chat*;
+  its content is RAG-usable in that chat only (Phase 30). Rate-limited + size-capped.
+  `GET /threads/{id}/attachments` lists them; `DELETE /threads/{id}/attachments/{filename}`
+  removes one; deleting the thread removes all of them.
 - `POST /feedback` — rate an answer (`{thread_id?, question, answer, rating, note?}`,
   `rating` ∈ `up`/`down`); upserts by (user, thread, answer) so re-rating doesn't
   double-count. `GET /feedback/stats` → `{up, down, total, satisfaction_rate}`.

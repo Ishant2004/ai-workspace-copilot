@@ -25,44 +25,53 @@ _RRF_K = 60
 
 
 def run_search(
-    user_id: int, query: str, k: int, mode: str, rerank: bool = False
+    user_id: int,
+    query: str,
+    k: int,
+    mode: str,
+    rerank: bool = False,
+    thread_id: int | None = None,
 ) -> list[dict]:
     """Search the user's documents, then optionally rerank.
 
     When reranking, we first retrieve a larger candidate set (so the
     cross-encoder has enough to choose from), then trim to k. Otherwise we just
-    retrieve k directly.
+    retrieve k directly. `thread_id` scopes to global KB + that chat's
+    attachments (Phase 30).
     """
     if not (query or "").strip():
         return []  # nothing to search for — avoid embedding an empty string
-    # Phase 24: cache identical searches (per-user, invalidated on doc writes).
+    # Phase 24: cache identical searches (per-user + thread, invalidated on writes).
     key = cache.content_hash(
-        "search", user_id, mode, k, rerank, cache.user_version(user_id), query
+        "search", user_id, thread_id, mode, k, rerank,
+        cache.user_version(user_id), query,
     )
     cached = cache.retrieval.get(key)
     if cached is not None:
         return cached
     n = settings.rerank_candidates if rerank else k
-    hits = _retrieve(user_id, query, n, mode)
+    hits = _retrieve(user_id, query, n, mode, thread_id)
     if rerank:
         hits = rerank_service.rerank(query, hits, k)
     cache.retrieval.set(key, hits)
     return hits
 
 
-def _retrieve(user_id: int, query: str, n: int, mode: str) -> list[dict]:
+def _retrieve(
+    user_id: int, query: str, n: int, mode: str, thread_id: int | None = None
+) -> list[dict]:
     """Return up to n of the user's candidates using the requested strategy."""
     if mode == "keyword":
-        hits = db.keyword_search(user_id, query, n)
+        hits = db.keyword_search(user_id, query, n, thread_id)
         return [
             {**h, "similarity": 0.0, "matched_by": ["keyword"]} for h in hits
         ]
 
     if mode == "vector":
-        hits = db.search(user_id, embed_text(query), n)
+        hits = db.search(user_id, embed_text(query), n, thread_id)
         return [{**h, "matched_by": ["vector"]} for h in hits]
 
-    return _hybrid(user_id, query, n)
+    return _hybrid(user_id, query, n, thread_id)
 
 
 def _fuse(ranked_lists: list[tuple[str, list[dict]]], k: int) -> list[dict]:
@@ -105,16 +114,20 @@ def _fuse(ranked_lists: list[tuple[str, list[dict]]], k: int) -> list[dict]:
     return fused[:k]
 
 
-def _hybrid(user_id: int, query: str, k: int) -> list[dict]:
+def _hybrid(
+    user_id: int, query: str, k: int, thread_id: int | None = None
+) -> list[dict]:
     if not (query or "").strip():
         return []
     candidates = max(_CANDIDATES, k)
-    vector_hits = db.search(user_id, embed_text(query), candidates)
-    keyword_hits = db.keyword_search(user_id, query, candidates)
+    vector_hits = db.search(user_id, embed_text(query), candidates, thread_id)
+    keyword_hits = db.keyword_search(user_id, query, candidates, thread_id)
     return _fuse([("vector", vector_hits), ("keyword", keyword_hits)], k)
 
 
-def multi_query_search(user_id: int, queries: list[str], k: int) -> list[dict]:
+def multi_query_search(
+    user_id: int, queries: list[str], k: int, thread_id: int | None = None
+) -> list[dict]:
     """Retrieve for several query variants (Phase 21) and fuse everything.
 
     We run both retrievers for each query and fuse all the resulting ranked
@@ -125,11 +138,11 @@ def multi_query_search(user_id: int, queries: list[str], k: int) -> list[dict]:
     if not queries:
         return []
     if len(queries) == 1:
-        return _hybrid(user_id, queries[0], k)
+        return _hybrid(user_id, queries[0], k, thread_id)
 
-    # Phase 24: cache the fused multi-query result (per-user, version-invalidated).
+    # Phase 24: cache the fused multi-query result (per-user + thread).
     key = cache.content_hash(
-        "mq", user_id, k, cache.user_version(user_id), *queries
+        "mq", user_id, thread_id, k, cache.user_version(user_id), *queries
     )
     cached = cache.retrieval.get(key)
     if cached is not None:
@@ -138,20 +151,29 @@ def multi_query_search(user_id: int, queries: list[str], k: int) -> list[dict]:
     candidates = max(_CANDIDATES, k)
     ranked_lists: list[tuple[str, list[dict]]] = []
     for i, q in enumerate(queries):
-        ranked_lists.append((f"vector{i}", db.search(user_id, embed_text(q), candidates)))
-        ranked_lists.append((f"keyword{i}", db.keyword_search(user_id, q, candidates)))
+        ranked_lists.append(
+            (f"vector{i}", db.search(user_id, embed_text(q), candidates, thread_id))
+        )
+        ranked_lists.append(
+            (f"keyword{i}", db.keyword_search(user_id, q, candidates, thread_id))
+        )
     fused = _fuse(ranked_lists, k)
     cache.retrieval.set(key, fused)
     return fused
 
 
 def search_expanded(
-    user_id: int, question: str, k: int, history: str = ""
+    user_id: int,
+    question: str,
+    k: int,
+    history: str = "",
+    thread_id: int | None = None,
 ) -> list[dict]:
     """RAG retrieval with query rewriting (Phase 21): expand the question into a
     few standalone queries, then multi-query-fuse. Honours the config flag — if
-    multi-query is off (or expansion yields one query) it's plain hybrid."""
+    multi-query is off (or expansion yields one query) it's plain hybrid.
+    `thread_id` includes that chat's attachments (Phase 30)."""
     if not settings.retrieval_multi_query:
-        return _hybrid(user_id, question, k)
+        return _hybrid(user_id, question, k, thread_id)
     queries = rewrite.expand_query(question, history, settings.rewrite_variants)
-    return multi_query_search(user_id, queries, k)
+    return multi_query_search(user_id, queries, k, thread_id)

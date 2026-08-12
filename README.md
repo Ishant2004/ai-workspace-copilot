@@ -58,7 +58,7 @@ polished UX, and security hardening.
 
 | Phase | Feature | Status |
 | ----- | ------- | ------ |
-| 30 | Chat-scoped document attachments (backend) | ⬜ Planned |
+| 30 | Chat-scoped document attachments (backend) | ✅ Done |
 | 31 | Attach-a-file UI + auto-RAG in chat | ⬜ Planned |
 | 32 | Workspace + read-only code tools | ⬜ Planned |
 | 33 | Code-editing tools (diffs + confinement) | ⬜ Planned |

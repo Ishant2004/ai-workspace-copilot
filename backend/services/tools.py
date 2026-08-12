@@ -80,9 +80,12 @@ def calculate(expression: str) -> str:
         return f"Could not evaluate expression: {expression!r}"
 
 
-def search_documents(user_id: int, query: str) -> str:
-    """Search the user's knowledge base and return the top matching chunks."""
-    hits = run_search(user_id, query, 3, "hybrid")
+def search_documents(user_id: int, query: str, thread_id: int | None = None) -> str:
+    """Search the user's knowledge base and return the top matching chunks.
+
+    `thread_id` (Phase 30) also includes files attached to the current chat.
+    """
+    hits = run_search(user_id, query, 3, "hybrid", thread_id=thread_id)
     if not hits:
         return "No matching documents found."
     return "\n\n".join(
@@ -256,11 +259,11 @@ def declarations() -> list[dict]:
     return [{"name": d.name, "description": d.description} for d in _DECLARATIONS]
 
 
-def dispatch(name: str, args: dict, user_id: int) -> str:
-    # search_documents is scoped to the calling user.
+def dispatch(name: str, args: dict, user_id: int, thread_id: int | None = None) -> str:
+    # search_documents is scoped to the calling user (+ this chat's attachments).
     if name == "search_documents":
         try:
-            return search_documents(user_id, **args)
+            return search_documents(user_id, thread_id=thread_id, **args)
         except Exception as exc:
             return f"Tool {name} failed: {exc}"
     # Other local tools need no user context.
@@ -340,14 +343,16 @@ def run_tool_loop(
     user_id: int,
     messages: list[dict],
     system_instruction: str | None = None,
+    thread_id: int | None = None,
 ) -> Iterator[dict]:
     """Drive the model through tool calls over a conversation, yielding events
     as they happen: {type: tool_call|tool_result|answer}.
 
-    `user_id` scopes any document search the agent performs. `messages` is the
-    conversation so far ({role, content}); the model sees it all, so the agent
-    has context. This is the ReAct loop of Phase 11 — reason, act (call a tool),
-    observe (its result), repeat.
+    `user_id` scopes any document search the agent performs (and `thread_id`
+    additionally includes the current chat's attachments — Phase 30). `messages`
+    is the conversation so far ({role, content}); the model sees it all, so the
+    agent has context. This is the ReAct loop of Phase 11 — reason, act (call a
+    tool), observe (its result), repeat.
     """
     contents = [
         types.Content(
@@ -378,7 +383,7 @@ def run_tool_loop(
         for call in calls:
             args = dict(call.args or {})
             yield {"type": "tool_call", "name": call.name, "args": args}
-            result = dispatch(call.name, args, user_id)
+            result = dispatch(call.name, args, user_id, thread_id)
             yield {"type": "tool_result", "name": call.name, "result": result}
             result_parts.append(
                 types.Part.from_function_response(
@@ -394,6 +399,7 @@ def stream_with_tools(
     user_id: int,
     messages: list[dict],
     system_instruction: str | None = None,
+    thread_id: int | None = None,
 ) -> Iterator[dict]:
     """Chat that can *optionally* reach for tools, but streams its final answer
     token-by-token (unlike run_tool_loop, which returns whole answers).
@@ -443,7 +449,7 @@ def stream_with_tools(
         for call in calls:
             args = dict(call.args or {})
             yield {"type": "tool_call", "name": call.name, "args": args}
-            result = dispatch(call.name, args, user_id)
+            result = dispatch(call.name, args, user_id, thread_id)
             yield {"type": "tool_result", "name": call.name, "result": result}
             result_parts.append(
                 types.Part.from_function_response(

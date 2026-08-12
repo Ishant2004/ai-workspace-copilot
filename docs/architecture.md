@@ -729,6 +729,21 @@ ingests, and injection flags (`GET /audit`). And **token refresh**
 in-process — appropriate for a $0 single service — and the honest limits (e.g. no
 server-side revocable refresh tokens) are documented rather than hidden.
 
+## Phase 30: chat-scoped attachments
+
+Not all knowledge belongs to the whole account — sometimes a file matters to *one
+conversation*. This adds a nullable `thread_id` to `documents`: NULL rows are the
+global knowledge base (visible everywhere), a thread id marks a file attached to
+that chat. A single `_scope(user_id, thread_id)` helper drives every retrieval:
+global search sees only NULL rows; a chat sees NULL rows **plus its own**
+attachments, never another chat's. `thread_id` is threaded through the whole
+retrieval stack (search → hybrid/multi-query → RAG, agent, chat, team) with a
+`None` default, so nothing else changed. Attachments are uploaded via
+`POST /threads/{id}/attach` (reusing the Phase 26 extract+ingest pipeline), listed
+and deleted per chat, excluded from the global KB views, and removed when the
+thread is deleted. Verified: an attachment is retrievable in its own chat but not
+in another chat or the global KB, while the global KB stays visible inside chats.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

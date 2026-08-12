@@ -206,7 +206,7 @@ own conventions.
 
 ## Summary of Part 3 milestones
 
-- ⬜ Chat-scoped attachments (backend) + retrieval isolation
+- ✅ Chat-scoped attachments (backend) + retrieval isolation
 - ⬜ Attach-a-file chat UI + auto-RAG on attachments
 - ⬜ Workspace confinement + read-only code tools
 - ⬜ Code-editing tools with diffs + approval

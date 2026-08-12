@@ -27,11 +27,13 @@ def ingest_segments(
     source: str,
     segments: list[str],
     extra_meta: dict | None = None,
+    thread_id: int | None = None,
 ) -> int:
     """Chunk → (contextualise) → embed → store. Returns the number of chunks stored.
 
     `source` records provenance (pdf/docx/markdown/html/url); `extra_meta` is
-    merged into every chunk's metadata (e.g. the source URL).
+    merged into every chunk's metadata (e.g. the source URL). `thread_id` scopes
+    the chunks to one chat as an attachment (Phase 30); NULL = global KB.
     """
     uploaded_at = datetime.now(timezone.utc).isoformat()
     base_meta = {"source": source, "filename": filename, "uploaded_at": uploaded_at}
@@ -81,4 +83,4 @@ def ingest_segments(
             meta["context"] = ctx
         title = f"{filename} · p{meta['page']} · chunk {i + 1}/{total}"
         rows.append((title, text, embedding, meta))
-    return db.insert_documents(user_id, rows)
+    return db.insert_documents(user_id, rows, thread_id=thread_id)

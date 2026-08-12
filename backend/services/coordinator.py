@@ -43,9 +43,10 @@ def _generate(prompt: str) -> str:
     raise RuntimeError(last)
 
 
-def run_team(user_id: int, goal: str) -> Iterator[dict]:
+def run_team(user_id: int, goal: str, thread_id: int | None = None) -> Iterator[dict]:
     """Run the pipeline, yielding events:
-    agent_start | agent_message | answer."""
+    agent_start | agent_message | answer. `thread_id` includes chat attachments
+    in retrieval (Phase 30)."""
 
     # 1. Planner — outline the approach.
     yield {"type": "agent_start", "role": "Planner"}
@@ -55,7 +56,7 @@ def run_team(user_id: int, goal: str) -> Iterator[dict]:
     # 2. Retriever — gather context from the user's knowledge base
     #    (deterministic hybrid search; this is the tool the retriever role uses).
     yield {"type": "agent_start", "role": "Retriever"}
-    hits = run_search(user_id, goal, 4, "hybrid")
+    hits = run_search(user_id, goal, 4, "hybrid", thread_id=thread_id)
     context = "\n\n".join(
         f"[#{h['id']}] {h['title']}\n{h['text']}" for h in hits
     )

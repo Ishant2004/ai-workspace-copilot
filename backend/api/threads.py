@@ -19,7 +19,7 @@ import json
 import time
 from collections.abc import Iterator
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from api.deps import current_user_id, rate_limited_user_id
@@ -40,7 +40,10 @@ from prompts import (
 from services import (
     audit,
     coordinator,
+    db,
+    extract,
     guard,
+    ingest,
     planner,
     profile,
     threads,
@@ -94,7 +97,71 @@ def delete_thread(
 ) -> dict:
     if not threads.delete_thread(thread_id, user_id):
         raise HTTPException(status_code=404, detail="Thread not found")
+    # Phase 30: a chat's attachments belong to it — remove them too.
+    db.delete_thread_documents(user_id, thread_id)
     return {"deleted": True, "id": thread_id}
+
+
+# --- Chat-scoped attachments (Phase 30) ------------------------------------
+
+
+@router.post("/threads/{thread_id}/attach")
+async def attach_file(
+    thread_id: int,
+    file: UploadFile,
+    user_id: int = Depends(rate_limited_user_id),
+) -> dict:
+    """Attach a file to this chat: its content is RAG-usable in this chat only."""
+    if not threads.thread_exists(thread_id, user_id):
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    filename = file.filename or "attachment"
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+    if ext not in extract.SUPPORTED_EXTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Supported: {', '.join(sorted(extract.SUPPORTED_EXTS))}",
+        )
+
+    data = await file.read()
+    if len(data) > settings.max_upload_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large (max {settings.max_upload_bytes // 1_000_000} MB).",
+        )
+    try:
+        segments = extract.extract_file(filename, data)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not read file: {exc}")
+    if not any(s.strip() for s in segments):
+        raise HTTPException(status_code=400, detail="No extractable text found.")
+
+    stored = ingest.ingest_segments(
+        user_id, filename, ext, segments, thread_id=thread_id
+    )
+    audit.log("chat.attach", user_id, {"thread_id": thread_id, "filename": filename})
+    return {"filename": filename, "chunks_stored": stored}
+
+
+@router.get("/threads/{thread_id}/attachments")
+def list_attachments(
+    thread_id: int, user_id: int = Depends(current_user_id)
+) -> list[dict]:
+    if not threads.thread_exists(thread_id, user_id):
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return db.list_attachments(user_id, thread_id)
+
+
+@router.delete("/threads/{thread_id}/attachments/{filename}")
+def delete_attachment(
+    thread_id: int, filename: str, user_id: int = Depends(current_user_id)
+) -> dict:
+    if not threads.thread_exists(thread_id, user_id):
+        raise HTTPException(status_code=404, detail="Thread not found")
+    removed = db.delete_attachment(user_id, thread_id, filename)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return {"deleted": True, "filename": filename, "chunks": removed}
 
 
 @router.post("/threads/{thread_id}/chat")
@@ -157,7 +224,7 @@ def thread_chat(
                 )
                 r_start = time.perf_counter()
                 hits = search_expanded(
-                    user_id, request.content, 4, history_text
+                    user_id, request.content, 4, history_text, thread_id
                 )
                 # Phase 29: flag any retrieved chunk that looks like a prompt
                 # injection. The RAG prompt already neutralises it (context is
@@ -211,7 +278,9 @@ def thread_chat(
                 #   - agent (Phase 11): tool_call/tool_result, answer → chunk.
                 #   - chat: tool-aware, streamed token-by-token.
                 if request.mode == "team":
-                    events = coordinator.run_team(user_id, request.content)
+                    events = coordinator.run_team(
+                        user_id, request.content, thread_id
+                    )
                 elif request.mode == "plan":
                     events = planner.run_plan(user_id, request.content)
                 elif request.mode == "agent":
@@ -219,12 +288,14 @@ def thread_chat(
                         user_id,
                         window,
                         user_profile + build_agent_system_prompt(),
+                        thread_id,
                     )
                 else:  # chat
                     events = tools.stream_with_tools(
                         user_id,
                         window,
                         user_profile + build_chat_system_prompt(),
+                        thread_id,
                     )
 
                 pending: dict[str, float] = {}
