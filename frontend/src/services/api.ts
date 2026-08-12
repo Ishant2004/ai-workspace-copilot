@@ -506,6 +506,44 @@ export async function refreshSession(): Promise<void> {
   }
 }
 
+// --- Chat-scoped attachments (Phase 30/31) ---
+export interface Attachment {
+  filename: string;
+  chunks: number;
+  id: number;
+}
+
+export async function attachFile(
+  threadId: number,
+  file: File
+): Promise<{ filename: string; chunks_stored: number }> {
+  const form = new FormData();
+  form.append("file", file);
+  const r = await apiFetch(`/api/threads/${threadId}/attach`, {
+    method: "POST",
+    body: form,
+  });
+  if (!r.ok) throw new Error(await errorText(r, "Attach"));
+  return r.json();
+}
+
+export async function listAttachments(threadId: number): Promise<Attachment[]> {
+  const r = await apiFetch(`/api/threads/${threadId}/attachments`);
+  if (!r.ok) throw new Error(await errorText(r, "Attachments"));
+  return r.json();
+}
+
+export async function deleteAttachment(
+  threadId: number,
+  filename: string
+): Promise<void> {
+  const r = await apiFetch(
+    `/api/threads/${threadId}/attachments/${encodeURIComponent(filename)}`,
+    { method: "DELETE" }
+  );
+  if (!r.ok) throw new Error(await errorText(r, "Delete attachment"));
+}
+
 export type ChatMode = "chat" | "rag" | "agent" | "plan" | "team";
 
 // Send one new message to a thread. The backend loads history itself and

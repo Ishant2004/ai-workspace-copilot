@@ -11,7 +11,11 @@ import {
   deleteFact,
   submitFeedback,
   getFeedbackStats,
+  attachFile,
+  listAttachments,
+  deleteAttachment,
   type ChatMode,
+  type Attachment,
   type Fact,
   type Message,
   type SearchHit,
@@ -53,7 +57,10 @@ export default function Chat() {
   const [dbError, setDbError] = useState<string | null>(null);
   const [facts, setFacts] = useState<Fact[]>([]); // Phase 13/25 profile memory
   const [fbStats, setFbStats] = useState<FeedbackStats | null>(null); // Phase 23
+  const [attachments, setAttachments] = useState<Attachment[]>([]); // Phase 31
+  const [attaching, setAttaching] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
+  const attachInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Lets us cancel an in-flight (possibly hanging) request.
@@ -150,6 +157,7 @@ export default function Chat() {
     setActiveId(id);
     setSidebarOpen(false); // close the drawer on mobile after picking a chat
     setMessages(await getThreadMessages(id));
+    refreshAttachments(id);
   }
 
   function newChat() {
@@ -157,6 +165,50 @@ export default function Chat() {
     setSidebarOpen(false);
     setMessages([]);
     setInput("");
+    setAttachments([]);
+  }
+
+  // Phase 31: files attached to the current chat (RAG context scoped to it).
+  async function refreshAttachments(id: number | null) {
+    if (id == null) {
+      setAttachments([]);
+      return;
+    }
+    try {
+      setAttachments(await listAttachments(id));
+    } catch {
+      /* attachments are best-effort in the UI */
+    }
+  }
+
+  async function onAttach(file: File) {
+    let threadId = activeId;
+    if (threadId == null) {
+      const t = await createThread(); // attaching starts a chat if none is open
+      threadId = t.id;
+      setActiveId(t.id);
+      await refreshThreads();
+    }
+    setAttaching(true);
+    try {
+      await attachFile(threadId, file);
+      await refreshAttachments(threadId);
+    } catch (e) {
+      setDbError(e instanceof Error ? e.message : "Attach failed");
+    } finally {
+      setAttaching(false);
+      if (attachInputRef.current) attachInputRef.current.value = "";
+    }
+  }
+
+  async function onRemoveAttachment(filename: string) {
+    if (activeId == null) return;
+    setAttachments((prev) => prev.filter((a) => a.filename !== filename)); // optimistic
+    try {
+      await deleteAttachment(activeId, filename);
+    } catch {
+      refreshAttachments(activeId);
+    }
   }
 
   async function onDeleteThread(id: number) {
@@ -575,9 +627,48 @@ export default function Chat() {
                 </button>
               ))}
             </div>
+            {/* Phase 31: files attached to this chat (RAG scoped to it). */}
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {attachments.map((a) => (
+                  <span
+                    key={a.filename}
+                    className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800 ring-1 ring-amber-200"
+                    title={`${a.chunks} chunk(s) — used as context in this chat only`}
+                  >
+                    📎 {a.filename}
+                    <button
+                      onClick={() => onRemoveAttachment(a.filename)}
+                      className="text-amber-400 hover:text-red-600"
+                      title="Remove attachment"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             {/* items-end keeps the Send button its natural height while the
                 textarea grows upward. */}
             <div className="flex items-end gap-2">
+              <input
+                ref={attachInputRef}
+                type="file"
+                accept=".pdf,.docx,.md,.markdown,.txt,.html,.htm"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onAttach(f);
+                }}
+              />
+              <button
+                onClick={() => attachInputRef.current?.click()}
+                disabled={attaching}
+                title="Attach a file to this chat"
+                className="rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
+              >
+                {attaching ? "…" : "📎"}
+              </button>
               <textarea
                 ref={inputRef}
                 className="max-h-36 flex-1 resize-none overflow-y-auto rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"

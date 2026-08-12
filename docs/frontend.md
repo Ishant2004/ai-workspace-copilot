@@ -135,6 +135,10 @@ The Chat tab is a two-pane layout: a **sidebar** listing conversations (with
     carry **Copy** + (on the latest) **Regenerate** actions; user messages carry
     **Edit** (loads the text back into the composer). Regenerate re-answers in
     place via the `regenerate` flag on `streamThreadChat` — no duplicated turn.
+  - *(Phase 31)* a 📎 button in the composer attaches a file to **this chat only**
+    (`POST /threads/{id}/attach`); attachments show as removable chips and are
+    used as RAG context in that chat (auto-consulted via a server-side nudge).
+    Opening a thread loads its attachments; they never appear in other chats.
 
 All streaming shares one SSE reader (`streamSse` in `api.ts`) with optional
 `onSources` / `onTrace` handlers. Messages are stored as `DisplayMessage` (a

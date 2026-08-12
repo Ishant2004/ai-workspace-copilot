@@ -208,6 +208,18 @@ def thread_chat(
             # retrieval over the profile), not the entire profile every turn.
             user_profile = profile.relevant_preamble(user_id, request.content)
 
+            # Phase 31: if this chat has attached files, nudge the tool-using
+            # modes to consult them (retrieval already includes them; this makes
+            # the agent/chat reliably reach for search_documents).
+            attach_note = ""
+            attachments = db.list_attachments(user_id, thread_id)
+            if attachments:
+                names = ", ".join(a["filename"] for a in attachments)
+                attach_note = (
+                    f"\n\nThis chat has attached file(s): {names}. Use the "
+                    "search_documents tool to consult them when relevant.\n"
+                )
+
             if request.mode == "rag":
                 # RAG stays grounded on the retrieved documents only (no tools):
                 # its whole point is answering *from the user's files*. Time
@@ -287,14 +299,14 @@ def thread_chat(
                     events = tools.run_tool_loop(
                         user_id,
                         window,
-                        user_profile + build_agent_system_prompt(),
+                        user_profile + build_agent_system_prompt() + attach_note,
                         thread_id,
                     )
                 else:  # chat
                     events = tools.stream_with_tools(
                         user_id,
                         window,
-                        user_profile + build_chat_system_prompt(),
+                        user_profile + build_chat_system_prompt() + attach_note,
                         thread_id,
                     )
 

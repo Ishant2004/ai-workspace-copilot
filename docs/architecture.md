@@ -744,6 +744,19 @@ and deleted per chat, excluded from the global KB views, and removed when the
 thread is deleted. Verified: an attachment is retrievable in its own chat but not
 in another chat or the global KB, while the global KB stays visible inside chats.
 
+## Phase 31: attach-a-file UI + auto-RAG
+
+The user-facing half of Phase 30. The composer gets a 📎 control that uploads to
+`POST /threads/{id}/attach`; the chat's attachments show as removable chips, and
+opening a thread loads its attachments. Because retrieval already includes a
+thread's attachments (Phase 30), `rag` mode grounds on them automatically — and
+for the tool-using modes (`chat`/`agent`) the endpoint adds a small **nudge** to
+the system prompt when the chat has attachments ("this chat has attached files;
+use search_documents…"), so the model reliably consults them instead of only
+sometimes. Verified end-to-end: after attaching a file, a plain `chat`-mode
+question made the model call `search_documents` and answer from the attached
+content — and nothing leaks to other chats (Phase 30).
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words
