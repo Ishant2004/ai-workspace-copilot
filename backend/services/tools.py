@@ -23,12 +23,14 @@ import ast
 import csv
 import io
 import operator
+import os
 from collections.abc import Iterator
 from datetime import datetime, timezone
 
 from google.genai import types
 
-from services import extract, gemini, mcp_client
+from config import settings
+from services import extract, gemini, mcp_client, workspace
 from services.search import run_search
 from services.web import web_search
 
@@ -109,6 +111,82 @@ def fetch_url(url: str) -> str:
     snippet = text[:_FETCH_MAX_CHARS]
     suffix = "…" if len(text) > _FETCH_MAX_CHARS else ""
     return f"{title}\n{url}\n\n{snippet}{suffix}"
+
+
+# --- Read-only code tools (Phase 32) ---------------------------------------
+# All three go through workspace.resolve(), so they can only ever touch files
+# inside the user's selected workspace root.
+
+
+def list_dir(user_id: int, path: str = ".") -> str:
+    """List entries in a workspace directory (directories first)."""
+    try:
+        target = workspace.resolve(user_id, path)
+    except workspace.WorkspaceError as exc:
+        return str(exc)
+    if not os.path.isdir(target):
+        return f"Not a directory: {path}"
+    entries = []
+    for name in sorted(os.listdir(target)):
+        if name in workspace.IGNORE_DIRS:
+            continue
+        full = os.path.join(target, name)
+        entries.append((os.path.isdir(full), name))
+    if not entries:
+        return f"(empty) {path}"
+    dirs = [f"{n}/" for is_dir, n in sorted(entries) if is_dir]
+    files = [n for is_dir, n in sorted(entries) if not is_dir]
+    return "\n".join(dirs + files)
+
+
+def read_file(user_id: int, path: str) -> str:
+    """Return the text contents of a workspace file (truncated if large)."""
+    try:
+        target = workspace.resolve(user_id, path)
+    except workspace.WorkspaceError as exc:
+        return str(exc)
+    if not os.path.isfile(target):
+        return f"Not a file: {path}"
+    if os.path.getsize(target) > settings.workspace_max_file_bytes:
+        return (
+            f"File too large to read (> {settings.workspace_max_file_bytes} bytes)."
+        )
+    try:
+        with open(target, "r", encoding="utf-8") as fh:
+            return fh.read()
+    except (UnicodeDecodeError, ValueError):
+        return f"Cannot read {path}: not a UTF-8 text file."
+
+
+def search_code(user_id: int, query: str, max_results: int = 0) -> str:
+    """Find lines containing `query` (case-insensitive) across the workspace."""
+    if not (query or "").strip():
+        return "Provide a search query."
+    try:
+        root = workspace.resolve(user_id, ".")
+    except workspace.WorkspaceError as exc:
+        return str(exc)
+    limit = max_results or settings.workspace_max_search_results
+    needle = query.lower()
+    hits: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in workspace.IGNORE_DIRS]
+        for name in sorted(filenames):
+            full = os.path.join(dirpath, name)
+            if os.path.getsize(full) > settings.workspace_max_file_bytes:
+                continue
+            try:
+                with open(full, "r", encoding="utf-8") as fh:
+                    for lineno, line in enumerate(fh, start=1):
+                        if needle in line.lower():
+                            rel = os.path.relpath(full, root)
+                            hits.append(f"{rel}:{lineno}: {line.strip()[:200]}")
+                            if len(hits) >= limit:
+                                hits.append(f"… (stopped at {limit} matches)")
+                                return "\n".join(hits)
+            except (UnicodeDecodeError, ValueError, OSError):
+                continue  # skip binary/unreadable files
+    return "\n".join(hits) if hits else f"No matches for {query!r}."
 
 
 def analyze_csv(csv_text: str) -> str:
@@ -242,6 +320,53 @@ _DECLARATIONS = [
             required=["csv_text"],
         ),
     ),
+    types.FunctionDeclaration(
+        name="list_dir",
+        description=(
+            "List files and folders in the code workspace. Use to explore the "
+            "repository. Path is relative to the workspace root ('.' for root)."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "path": types.Schema(
+                    type=types.Type.STRING,
+                    description="Directory path relative to the workspace root.",
+                )
+            },
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="read_file",
+        description="Read a file's contents from the code workspace.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "path": types.Schema(
+                    type=types.Type.STRING,
+                    description="File path relative to the workspace root.",
+                )
+            },
+            required=["path"],
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="search_code",
+        description=(
+            "Search the code workspace for a string (case-insensitive) and "
+            "return matching file:line results. Use to locate code."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "query": types.Schema(
+                    type=types.Type.STRING,
+                    description="Text to search for across workspace files.",
+                )
+            },
+            required=["query"],
+        ),
+    ),
 ]
 
 # Tools that don't need a user context.
@@ -251,6 +376,13 @@ _FUNCTIONS = {
     "web_search": web_search,
     "fetch_url": fetch_url,
     "analyze_csv": analyze_csv,
+}
+
+# Tools that operate on the caller's workspace (need user_id) — Phase 32.
+_CODE_TOOLS = {
+    "list_dir": list_dir,
+    "read_file": read_file,
+    "search_code": search_code,
 }
 
 
@@ -264,6 +396,13 @@ def dispatch(name: str, args: dict, user_id: int, thread_id: int | None = None) 
     if name == "search_documents":
         try:
             return search_documents(user_id, thread_id=thread_id, **args)
+        except Exception as exc:
+            return f"Tool {name} failed: {exc}"
+    # Code tools operate on the caller's workspace (Phase 32) — need user_id.
+    code_fn = _CODE_TOOLS.get(name)
+    if code_fn is not None:
+        try:
+            return str(code_fn(user_id, **args))
         except Exception as exc:
             return f"Tool {name} failed: {exc}"
     # Other local tools need no user context.

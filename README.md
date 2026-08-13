@@ -60,7 +60,7 @@ polished UX, and security hardening.
 | ----- | ------- | ------ |
 | 30 | Chat-scoped document attachments (backend) | ✅ Done |
 | 31 | Attach-a-file UI + auto-RAG in chat | ✅ Done |
-| 32 | Workspace + read-only code tools | ⬜ Planned |
+| 32 | Workspace + read-only code tools | ✅ Done |
 | 33 | Code-editing tools (diffs + confinement) | ⬜ Planned |
 | 34 | Coding agent (`code` mode) | ⬜ Planned |
 | 35 | Skills framework (`use_skill`) | ⬜ Planned |

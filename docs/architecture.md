@@ -757,6 +757,20 @@ sometimes. Verified end-to-end: after attaching a file, a plain `chat`-mode
 question made the model call `search_documents` and answer from the attached
 content — and nothing leaks to other chats (Phase 30).
 
+## Phase 32: workspace + read-only code tools
+
+The first step toward a coding copilot — deliberately read-only. The user selects
+a workspace directory (`POST /workspace`); `services/workspace.py` stores it per
+user and, crucially, provides `resolve()` — the **single confinement chokepoint**
+that maps every path inside the chosen root and rejects anything escaping it
+(`..`, absolute paths, symlink escape) using realpath + a prefix check. Three
+tools sit on top: `list_dir`, `read_file` (size-capped, text-only), and
+`search_code` (a bounded walk that skips `.git`, `node_modules`, …). They're
+routed with the caller's `user_id` and also exposed over MCP. There is **no write
+tool yet** — that's Phase 33, and building/read-testing confinement first is the
+whole point: the dangerous capability only arrives once the guardrail is proven.
+Verified: the tools read real files, and path-escape attempts all fail.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

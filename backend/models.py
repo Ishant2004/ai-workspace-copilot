@@ -215,6 +215,12 @@ class UrlIngestRequest(BaseModel):
     url: str
 
 
+class WorkspaceRequest(BaseModel):
+    """Body of POST /workspace — the directory the code tools may operate on."""
+
+    path: str
+
+
 class FeedbackRequest(BaseModel):
     """Body of POST /feedback — a rating for one assistant answer (Phase 23)."""
 

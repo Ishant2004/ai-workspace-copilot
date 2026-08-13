@@ -46,6 +46,8 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `services/ratelimit.py` | In-process per-key fixed-window rate limiter (Phase 29). |
 | `services/audit.py` | Audit log: record + list security events (Phase 29). |
 | `services/guard.py` | Heuristic prompt-injection detector for retrieved content (Phase 29). |
+| `services/workspace.py` | Per-user code workspace root + path confinement (Phase 32). |
+| `api/workspace.py` | `GET`/`POST /workspace` — select the directory code tools operate on. |
 | `services/feedback.py` | 👍/👎 feedback store: rate answers, satisfaction stats, export negatives (Phase 23). |
 | `api/feedback.py` | `POST /feedback`, `GET /feedback/stats`, `GET /feedback/export`. |
 | `eval/export_feedback.py` | CLI: turn thumbs-down feedback into golden-set candidates. |
@@ -207,6 +209,9 @@ system prompt on every turn (chat/RAG/agent). A hard `gemini_request_timeout`
 - `POST /auth/refresh` → a fresh token for a still-valid one (sliding session).
   `GET /audit` → this user's recent security events. `/auth/signup` + `/auth/login`
   are rate-limited per client IP (Phase 29).
+- `GET /workspace` → the directory code tools operate on (`{root}`, may be null).
+  `POST /workspace` — the user selects that directory (`{path}`); validated as an
+  existing dir (and inside `WORKSPACE_ALLOWED_BASE` if set). Phase 32.
 - `POST /threads/{id}/attach` — attach a file (multipart `file`) to *one chat*;
   its content is RAG-usable in that chat only (Phase 30). Rate-limited + size-capped.
   `GET /threads/{id}/attachments` lists them; `DELETE /threads/{id}/attachments/{filename}`
@@ -441,6 +446,22 @@ Both are registered in the local tool registry (declarations + `_FUNCTIONS`) and
 exposed via the MCP server, so the in-app agent, plain chat (tool-aware), and
 external MCP clients all get them. Verified: an agent given pasted sales CSV
 called `analyze_csv` and answered "total revenue is 4,000".
+
+### Workspace + read-only code tools (Phase 32)
+
+The start of the code-editing track — read-only and safety-first.
+`services/workspace.py` is the **confinement spine**: the user selects a workspace
+directory (`POST /workspace`, stored per user), and `resolve(user_id, rel_path)`
+maps any path *inside* that root, rejecting escapes (`..`, absolute paths, symlink
+escape) via `os.path.realpath` + a prefix check. It's the single chokepoint every
+file operation must pass through. Three tools go through it — `list_dir`,
+`read_file` (size-capped, UTF-8 only), and `search_code` (bounded walk skipping
+`.git`/`node_modules`/… ) — routed in `dispatch` with the caller's `user_id` (like
+`search_documents`) and exposed via MCP. **No write capability in this phase.**
+Verified: after selecting a workspace, the tools list/read/search real files, and
+every path-escape attempt (`../etc/passwd`, absolute paths, an outside file) is
+rejected. A configured root must be inside `WORKSPACE_ALLOWED_BASE` when that
+fence is set.
 
 ### Security hardening (Phase 29)
 

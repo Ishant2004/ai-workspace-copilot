@@ -70,5 +70,29 @@ def analyze_csv(csv_text: str) -> str:
     return tools.analyze_csv(csv_text)
 
 
+@mcp.tool()
+def list_dir(path: str = ".") -> str:
+    """List files/folders in the configured owner's code workspace (Phase 32)."""
+    if _MCP_USER_ID is None:
+        return "Code tools disabled: set MCP_USER_ID to your user id."
+    return tools.list_dir(_MCP_USER_ID, path)
+
+
+@mcp.tool()
+def read_file(path: str) -> str:
+    """Read a file from the configured owner's code workspace."""
+    if _MCP_USER_ID is None:
+        return "Code tools disabled: set MCP_USER_ID to your user id."
+    return tools.read_file(_MCP_USER_ID, path)
+
+
+@mcp.tool()
+def search_code(query: str) -> str:
+    """Search the configured owner's code workspace for a string."""
+    if _MCP_USER_ID is None:
+        return "Code tools disabled: set MCP_USER_ID to your user id."
+    return tools.search_code(_MCP_USER_ID, query)
+
+
 if __name__ == "__main__":
     mcp.run()  # stdio transport

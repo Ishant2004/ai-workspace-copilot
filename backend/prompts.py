@@ -65,6 +65,8 @@ def build_agent_system_prompt() -> str:
         "- fetch_url: read a specific web page (e.g. a web_search result) to "
         "extract details.\n"
         "- analyze_csv: summarise/aggregate small CSV data the user provides.\n"
+        "- list_dir / read_file / search_code: explore and read the user's code "
+        "workspace when a question is about their codebase.\n"
         "- calculate: for arithmetic.\n"
         "- get_current_time: for the current date/time.\n"
         "You may call tools multiple times, using earlier results to decide "

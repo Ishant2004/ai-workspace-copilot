@@ -208,7 +208,7 @@ own conventions.
 
 - ✅ Chat-scoped attachments (backend) + retrieval isolation
 - ✅ Attach-a-file chat UI + auto-RAG on attachments
-- ⬜ Workspace confinement + read-only code tools
+- ✅ Workspace confinement + read-only code tools
 - ⬜ Code-editing tools with diffs + approval
 - ⬜ Coding agent (`code` mode)
 - ⬜ Skills framework (`use_skill`, registry)

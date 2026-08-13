@@ -42,6 +42,18 @@ class Settings(BaseSettings):
     max_message_chars: int = 8000
     max_upload_bytes: int = 10_000_000  # 10 MB
 
+    # --- Code workspace (Phase 32) ---
+    # The directory the coding tools may read/edit. The USER selects it at runtime
+    # (POST /workspace); this env value is only an optional default. Every file
+    # operation is confined to the selected root (see services/workspace.py).
+    workspace_root: str = ""
+    # Optional safety fence: if set, a user-selected root must live *inside* this
+    # base directory (empty = allow any existing directory the user picks).
+    workspace_allowed_base: str = ""
+    # Caps for read-only code tools.
+    workspace_max_file_bytes: int = 200_000
+    workspace_max_search_results: int = 40
+
     # --- Token inspector settings (Phase 1) ---
     # How many tokens the model can hold in one request. Gemini Flash models
     # have a ~1M token context window. Used to show "% of context used".
