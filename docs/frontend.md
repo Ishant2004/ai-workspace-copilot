@@ -184,6 +184,15 @@ The UI adapts to small screens:
   slide-over **drawer** on mobile, opened by a "☰ Chats" button and dismissed by
   tapping the backdrop or picking a chat.
 - The **mode selector** and long rows scroll horizontally rather than overflow.
+- The app uses **`h-[100dvh]`** (dynamic viewport height) so the composer stays
+  visible above the mobile browser's address bar instead of being pushed off.
+- Message bubbles widen slightly on phones (`max-w-[90%]` → `sm:max-w-[85%]`) and
+  padding tightens (`p-3` → `sm:p-4`).
+- **`code` mode is hidden on phones** — a `useIsMobile()` hook (matchMedia on the
+  640px breakpoint) filters it out of the mode selector, and switches away from
+  it if the window shrinks while selected. Its folder-picker/diff workflow is
+  desktop-only, so it never appears on mobile. Verified live: at 375px the modes
+  are Chat/Rag/Agent/Plan/Team; at 1280px `Code` returns.
 
 Tailwind's `sm:` breakpoint (640px) is the divider; `index.html` sets the
 `viewport` meta so it scales correctly on phones.

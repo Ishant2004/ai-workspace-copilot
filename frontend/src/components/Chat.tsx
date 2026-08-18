@@ -53,9 +53,26 @@ type DisplayMessage = Message & {
   rating?: Rating; // Phase 23: the user's 👍/👎 on this answer
 };
 
+// True on phone-sized screens (matches Tailwind's `sm` breakpoint, 640px).
+// Re-evaluates on resize/rotation so the layout adapts live.
+function useIsMobile() {
+  const query = "(max-width: 639px)";
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(query).matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const onChange = () => setIsMobile(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return isMobile;
+}
+
 // Phase 0: streaming chat. Phase 4: RAG grounding. Phase 9: persistent threads.
 // Phase 11: an "Agent" mode that lets the model call tools mid-conversation.
 export default function Chat() {
+  const isMobile = useIsMobile();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -95,6 +112,15 @@ export default function Chat() {
     refreshFeedbackStats();
     getWorkspace().then(setWorkspaceState).catch(() => {}); // Phase 34
   }, []);
+
+  // Code mode (folder picker, diffs, editing) is a desktop workflow — drop it on
+  // phones, and switch away if the screen shrinks while it's selected.
+  useEffect(() => {
+    if (isMobile && mode === "code") setMode("chat");
+  }, [isMobile, mode]);
+  const modes = (
+    ["chat", "rag", "agent", "plan", "team", "code"] as ChatMode[]
+  ).filter((m) => !(isMobile && m === "code"));
 
   // Phase 34: staged code edits + workspace selection.
   async function refreshEdits() {
@@ -476,7 +502,9 @@ export default function Chat() {
           ? "Give a multi-step goal — it'll plan, then execute each step."
           : mode === "team"
             ? "Give a goal — a team (planner, retriever, solver, reviewer) tackles it."
-            : "Ask me anything to get started.";
+            : mode === "code"
+              ? "Describe a code change — the agent reads the workspace and proposes edits."
+              : "Ask me anything to get started.";
 
   return (
     <div className="relative flex h-full">
@@ -597,7 +625,7 @@ export default function Chat() {
             ☰ Chats
           </button>
         </div>
-        <main className="mx-auto w-full max-w-2xl flex-1 space-y-4 overflow-y-auto p-4">
+        <main className="mx-auto w-full max-w-2xl flex-1 space-y-4 overflow-y-auto p-3 sm:p-4">
           {messages.length === 0 && (
             <p className="mt-20 text-center text-neutral-400">{placeholder}</p>
           )}
@@ -615,7 +643,7 @@ export default function Chat() {
               {(m.content || m.role === "user" || busy) && (
                 <div
                   className={
-                    "inline-block max-w-[85%] rounded-2xl px-4 py-2 text-sm " +
+                    "inline-block max-w-[90%] rounded-2xl px-4 py-2 text-sm sm:max-w-[85%] " +
                     (m.role === "user"
                       ? "whitespace-pre-wrap bg-blue-600 text-white"
                       : "bg-white text-neutral-900 shadow-sm ring-1 ring-neutral-200")
@@ -677,11 +705,11 @@ export default function Chat() {
           <div ref={bottomRef} />
         </main>
 
-        <footer className="border-t border-neutral-200 bg-white p-4">
+        <footer className="border-t border-neutral-200 bg-white p-3 sm:p-4">
           <div className="mx-auto w-full max-w-2xl space-y-2">
             {/* Mode selector: plain chat, RAG grounding, or tool-using agent. */}
             <div className="no-scrollbar flex gap-1 overflow-x-auto rounded-lg bg-neutral-100 p-1 text-xs">
-              {(["chat", "rag", "agent", "plan", "team", "code"] as ChatMode[]).map((m) => (
+              {modes.map((m) => (
                 <button
                   key={m}
                   onClick={() => setMode(m)}

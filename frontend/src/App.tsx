@@ -44,7 +44,7 @@ export default function App() {
   if (!authed) return <Auth onAuthed={() => setAuthed(true)} />;
 
   return (
-    <div className="flex h-screen flex-col bg-neutral-50 text-neutral-900">
+    <div className="flex h-[100dvh] flex-col bg-neutral-50 text-neutral-900">
       <header className="border-b border-neutral-200 bg-white px-4 py-3">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center justify-between">
