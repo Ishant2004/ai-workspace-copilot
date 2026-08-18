@@ -63,4 +63,4 @@ jobs:
         run: PYTHONPATH="$(pwd)" python -m eval.run_eval
       - name: Skip note
         if: ${{ env.DATABASE_URL == '' || env.GEMINI_API_KEY == '' }}
-        run: echo "Skipping eval gate: DATABASE_URL / GEMINI_API_KEY secrets not set."
+        run: 'echo "Skipping eval gate - DATABASE_URL / GEMINI_API_KEY secrets not set."'
