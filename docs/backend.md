@@ -47,7 +47,8 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `services/audit.py` | Audit log: record + list security events (Phase 29). |
 | `services/guard.py` | Heuristic prompt-injection detector for retrieved content (Phase 29). |
 | `services/workspace.py` | Per-user code workspace root + path confinement (Phase 32). |
-| `api/workspace.py` | `GET`/`POST /workspace` — select the directory code tools operate on. |
+| `services/editor.py` | Code edits: propose (diff, staged) → apply/discard (Phase 33). |
+| `api/workspace.py` | Select the workspace; review/apply/discard staged edits. |
 | `services/feedback.py` | 👍/👎 feedback store: rate answers, satisfaction stats, export negatives (Phase 23). |
 | `api/feedback.py` | `POST /feedback`, `GET /feedback/stats`, `GET /feedback/export`. |
 | `eval/export_feedback.py` | CLI: turn thumbs-down feedback into golden-set candidates. |
@@ -212,6 +213,9 @@ system prompt on every turn (chat/RAG/agent). A hard `gemini_request_timeout`
 - `GET /workspace` → the directory code tools operate on (`{root}`, may be null).
   `POST /workspace` — the user selects that directory (`{path}`); validated as an
   existing dir (and inside `WORKSPACE_ALLOWED_BASE` if set). Phase 32.
+- `GET /workspace/edits` → staged code edits (diffs) awaiting approval;
+  `POST /workspace/edits/apply` writes them all (confined + audited);
+  `POST /workspace/edits/discard` throws them away. Phase 33.
 - `POST /threads/{id}/attach` — attach a file (multipart `file`) to *one chat*;
   its content is RAG-usable in that chat only (Phase 30). Rate-limited + size-capped.
   `GET /threads/{id}/attachments` lists them; `DELETE /threads/{id}/attachments/{filename}`
@@ -462,6 +466,22 @@ Verified: after selecting a workspace, the tools list/read/search real files, an
 every path-escape attempt (`../etc/passwd`, absolute paths, an outside file) is
 rejected. A configured root must be inside `WORKSPACE_ALLOWED_BASE` when that
 fence is set.
+
+### Code-editing tools (Phase 33)
+
+Write capability, added only after confinement was proven — and never silent.
+`services/editor.py` implements **propose → review → apply**: `write_file` and
+`edit_file` (exact-match snippet replace, which must match exactly once) compute
+the resulting content plus a **unified diff** and *stage* it in an in-memory
+buffer; nothing touches disk. `GET /workspace/edits` returns the pending diffs;
+`POST /workspace/edits/apply` writes them (re-resolving each path through
+`workspace.resolve` at apply time and audit-logging every write); `.../discard`
+drops them. Content is size-capped, paths are confined at both propose and apply
+time, and the tools are user-scoped in `dispatch`. Verified end-to-end: a proposed
+edit returns a diff and writes nothing until applied; applying updates the files
+and logs `code.edit_applied`; edits outside the workspace are rejected and never
+staged; ambiguous/missing snippets are refused; discard clears the buffer. (No
+editing over MCP — MCP clients have no approval step, so it stays read-only.)
 
 ### Security hardening (Phase 29)
 

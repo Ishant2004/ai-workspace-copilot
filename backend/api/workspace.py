@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from api.deps import current_user_id
 from models import WorkspaceRequest
-from services import audit, workspace
+from services import audit, editor, workspace
 
 router = APIRouter()
 
@@ -32,3 +32,25 @@ def set_workspace(
         raise HTTPException(status_code=400, detail=str(exc))
     audit.log("workspace.set", user_id, {"root": root})
     return {"root": root}
+
+
+# --- Pending code edits: review → apply / discard (Phase 33) ----------------
+
+
+@router.get("/workspace/edits")
+def get_edits(user_id: int = Depends(current_user_id)) -> list[dict]:
+    """Proposed edits staged by the coding tools (diffs), awaiting approval."""
+    return editor.list_pending(user_id)
+
+
+@router.post("/workspace/edits/apply")
+def apply_edits(user_id: int = Depends(current_user_id)) -> dict:
+    """Write all staged edits to disk (confined + audited)."""
+    applied = editor.apply_pending(user_id)
+    return {"applied": applied, "count": len(applied)}
+
+
+@router.post("/workspace/edits/discard")
+def discard_edits(user_id: int = Depends(current_user_id)) -> dict:
+    """Throw away all staged edits without writing anything."""
+    return {"discarded": editor.discard_pending(user_id)}

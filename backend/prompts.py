@@ -67,6 +67,8 @@ def build_agent_system_prompt() -> str:
         "- analyze_csv: summarise/aggregate small CSV data the user provides.\n"
         "- list_dir / read_file / search_code: explore and read the user's code "
         "workspace when a question is about their codebase.\n"
+        "- write_file / edit_file: propose code changes (read the file first). "
+        "These stage a diff for the user to apply — they don't write directly.\n"
         "- calculate: for arithmetic.\n"
         "- get_current_time: for the current date/time.\n"
         "You may call tools multiple times, using earlier results to decide "

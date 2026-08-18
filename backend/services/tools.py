@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from google.genai import types
 
 from config import settings
-from services import extract, gemini, mcp_client, workspace
+from services import editor, extract, gemini, mcp_client, workspace
 from services.search import run_search
 from services.web import web_search
 
@@ -156,6 +156,22 @@ def read_file(user_id: int, path: str) -> str:
             return fh.read()
     except (UnicodeDecodeError, ValueError):
         return f"Cannot read {path}: not a UTF-8 text file."
+
+
+def write_file(user_id: int, path: str, content: str) -> str:
+    """Propose creating/overwriting a workspace file (staged for approval)."""
+    try:
+        return editor.propose_write(user_id, path, content)
+    except workspace.WorkspaceError as exc:
+        return str(exc)
+
+
+def edit_file(user_id: int, path: str, old_text: str, new_text: str) -> str:
+    """Propose an exact-match edit to a workspace file (staged for approval)."""
+    try:
+        return editor.propose_edit(user_id, path, old_text, new_text)
+    except workspace.WorkspaceError as exc:
+        return str(exc)
 
 
 def search_code(user_id: int, query: str, max_results: int = 0) -> str:
@@ -367,6 +383,55 @@ _DECLARATIONS = [
             required=["query"],
         ),
     ),
+    types.FunctionDeclaration(
+        name="write_file",
+        description=(
+            "Propose creating or overwriting a workspace file with new content. "
+            "Returns a diff and STAGES the change for the user to apply — it does "
+            "not write immediately. Read the file first before overwriting it."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "path": types.Schema(
+                    type=types.Type.STRING,
+                    description="File path relative to the workspace root.",
+                ),
+                "content": types.Schema(
+                    type=types.Type.STRING,
+                    description="The full new contents of the file.",
+                ),
+            },
+            required=["path", "content"],
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="edit_file",
+        description=(
+            "Propose an edit to a workspace file by replacing an exact snippet "
+            "(old_text) with new_text. old_text must match exactly once. Returns "
+            "a diff and STAGES the change for approval — it does not write "
+            "immediately."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "path": types.Schema(
+                    type=types.Type.STRING,
+                    description="File path relative to the workspace root.",
+                ),
+                "old_text": types.Schema(
+                    type=types.Type.STRING,
+                    description="The exact snippet to replace (must be unique).",
+                ),
+                "new_text": types.Schema(
+                    type=types.Type.STRING,
+                    description="The replacement text.",
+                ),
+            },
+            required=["path", "old_text", "new_text"],
+        ),
+    ),
 ]
 
 # Tools that don't need a user context.
@@ -378,11 +443,13 @@ _FUNCTIONS = {
     "analyze_csv": analyze_csv,
 }
 
-# Tools that operate on the caller's workspace (need user_id) — Phase 32.
+# Tools that operate on the caller's workspace (need user_id) — Phase 32/33.
 _CODE_TOOLS = {
     "list_dir": list_dir,
     "read_file": read_file,
     "search_code": search_code,
+    "write_file": write_file,
+    "edit_file": edit_file,
 }
 
 

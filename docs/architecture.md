@@ -771,6 +771,20 @@ tool yet** — that's Phase 33, and building/read-testing confinement first is t
 whole point: the dangerous capability only arrives once the guardrail is proven.
 Verified: the tools read real files, and path-escape attempts all fail.
 
+## Phase 33: code-editing tools
+
+Write capability — added only now that confinement is proven, and deliberately
+**never silent**. `services/editor.py` follows propose → review → apply:
+`write_file` and `edit_file` (exact-match replace, unique match required) compute
+the new content and a **unified diff** and stage it; the disk is untouched until
+the user calls apply. `GET /workspace/edits` shows the pending diffs;
+`POST /workspace/edits/apply` writes them (re-confined via `workspace.resolve` and
+audit-logged); discard drops them. Content is size-capped and paths are checked at
+both propose and apply time. This is the safety philosophy stated at the top of
+`plan3.md` made concrete: the agent proposes, the human approves, and every write
+is confined, diffed, and logged. Verified: proposals write nothing until applied,
+out-of-workspace writes are rejected and never staged, and apply logs each edit.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words
