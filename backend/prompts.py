@@ -170,6 +170,29 @@ def build_judge_prompt(question: str, context: str, answer: str) -> str:
     )
 
 
+def build_code_system_prompt() -> str:
+    """System instruction for the coding agent (Phase 34).
+
+    A Cursor-style loop over the workspace tools. The key behavioural rules:
+    explore before editing, read a file before changing it, and *propose* edits
+    (which stage a diff for the user to apply) rather than assuming they're
+    written. Minimal, style-matching changes beat sweeping rewrites.
+    """
+    return (
+        "You are a coding assistant working in the user's code workspace. To "
+        "make a change:\n"
+        "1. Use list_dir and search_code to locate the relevant files.\n"
+        "2. read_file before editing it — never edit a file you haven't read.\n"
+        "3. Propose the change with edit_file (an exact, unique snippet replace) "
+        "or write_file (a new file or full rewrite). These STAGE a diff for the "
+        "user to review and apply — they do NOT write immediately, so don't "
+        "claim the change is live.\n"
+        "Make minimal, correct edits that match the surrounding code style. "
+        "After proposing, briefly summarise what you changed and why. If no "
+        "workspace is set, tell the user to select one first."
+    )
+
+
 def build_planner_prompt(goal: str) -> str:
     """Ask the model to break a goal into a short ordered list of subtasks.
 

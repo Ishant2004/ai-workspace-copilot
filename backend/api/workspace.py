@@ -22,6 +22,14 @@ def get_workspace(user_id: int = Depends(current_user_id)) -> dict:
     return {"root": workspace.get_root(user_id)}
 
 
+@router.get("/workspace/browse")
+def browse_workspace(
+    path: str = "", user_id: int = Depends(current_user_id)
+) -> dict:
+    """List subfolders so the UI can offer a click-through folder picker."""
+    return workspace.browse(path or None)
+
+
 @router.post("/workspace")
 def set_workspace(
     body: WorkspaceRequest, user_id: int = Depends(current_user_id)

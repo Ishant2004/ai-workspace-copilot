@@ -201,6 +201,9 @@ system prompt on every turn (chat/RAG/agent). A hard `gemini_request_timeout`
     `tool_result` / `step_result` per step, then the synthesized `answer`.
   - `team` (Phase 16): emits `agent_start` / `agent_message` per sub-agent
     (Planner, Retriever, Solver, Reviewer), then the final `answer`.
+  - `code` (Phase 34): a coding agent — the ReAct loop with the workspace tools
+    (list/read/search + write/edit) and a higher step budget (`code_max_steps`);
+    it reads relevant files and *proposes* edits (staged diffs) to review/apply.
   Every mode ends with a `trace` event (Phase 20): the turn's timed spans +
   token estimate. The assistant reply is persisted; new threads are auto-titled.
 - `GET /threads/{id}/traces` → recent per-turn traces for the thread
@@ -211,8 +214,12 @@ system prompt on every turn (chat/RAG/agent). A hard `gemini_request_timeout`
   `GET /audit` → this user's recent security events. `/auth/signup` + `/auth/login`
   are rate-limited per client IP (Phase 29).
 - `GET /workspace` → the directory code tools operate on (`{root}`, may be null).
-  `POST /workspace` — the user selects that directory (`{path}`); validated as an
-  existing dir (and inside `WORKSPACE_ALLOWED_BASE` if set). Phase 32.
+  `POST /workspace` — select that directory (`{path}`); validated as an existing
+  dir (and inside `WORKSPACE_ALLOWED_BASE` if set). Phase 32.
+- `GET /workspace/browse?path=` → subfolders of a directory (`{current, parent,
+  dirs}`) so the UI can offer a **click-through folder picker** (the browser can't
+  provide absolute paths, so the backend lists the server's directories). Confined
+  to `WORKSPACE_ALLOWED_BASE` when set; opens at the home dir otherwise.
 - `GET /workspace/edits` → staged code edits (diffs) awaiting approval;
   `POST /workspace/edits/apply` writes them all (confined + audited);
   `POST /workspace/edits/discard` throws them away. Phase 33.
@@ -482,6 +489,23 @@ edit returns a diff and writes nothing until applied; applying updates the files
 and logs `code.edit_applied`; edits outside the workspace are rejected and never
 staged; ambiguous/missing snippets are refused; discard clears the buffer. (No
 editing over MCP — MCP clients have no approval step, so it stays read-only.)
+
+### Coding agent — `code` mode (Phase 34)
+
+`code` mode runs the ReAct loop (`run_tool_loop`) with the workspace tools and a
+coding-focused prompt (`build_code_system_prompt`): explore with
+`list_dir`/`search_code`, `read_file` before editing, then propose edits with
+`edit_file`/`write_file` — which stage diffs, not silent writes. It gets a higher
+tool-step budget (`code_max_steps`, default 12) because it explores more than a
+normal agent turn. Each read/edit surfaces as a tool event + trace span. Verified
+end-to-end: given "change greet to return 'hi there'", the agent listed the dir,
+read the file, called `edit_file` (staged), summarised the proposal without
+claiming it was applied, and a subsequent apply wrote it to disk.
+
+Note: if the user has an external filesystem MCP server configured, the agent may
+also use its tools; those are governed by *that server's* own sandbox, not our
+workspace confinement — our native code tools remain confined via
+`workspace.resolve`.
 
 ### Security hardening (Phase 29)
 

@@ -139,6 +139,12 @@ The Chat tab is a two-pane layout: a **sidebar** listing conversations (with
     (`POST /threads/{id}/attach`); attachments show as removable chips and are
     used as RAG context in that chat (auto-consulted via a server-side nudge).
     Opening a thread loads its attachments; they never appear in other chats.
+  - *(Phase 34)* a **`code`** mode runs the coding agent over a selected workspace
+    folder, chosen with a **`FolderPicker`** modal — a click-through browser of the
+    server's directories (`GET /workspace/browse`), since the browser can't hand
+    over an absolute path. Proposed edits come back as staged diffs rendered in a
+    **`PendingEditsPanel`** (green/red `DiffView`) with **Apply** / **Discard**
+    (`/workspace/edits/apply|discard`) — nothing is written until you apply.
 
 All streaming shares one SSE reader (`streamSse` in `api.ts`) with optional
 `onSources` / `onTrace` handlers. Messages are stored as `DisplayMessage` (a

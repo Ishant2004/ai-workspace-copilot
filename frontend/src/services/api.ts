@@ -544,7 +544,62 @@ export async function deleteAttachment(
   if (!r.ok) throw new Error(await errorText(r, "Delete attachment"));
 }
 
-export type ChatMode = "chat" | "rag" | "agent" | "plan" | "team";
+// --- Code workspace + edits (Phase 32/33/34) ---
+export async function getWorkspace(): Promise<string | null> {
+  const r = await apiFetch("/api/workspace");
+  if (!r.ok) throw new Error(await errorText(r, "Workspace"));
+  return (await r.json()).root;
+}
+
+export interface BrowseResult {
+  current: string;
+  parent: string | null;
+  dirs: string[];
+}
+
+// Phase 34: list subfolders for the click-through folder picker.
+export async function browseWorkspace(path?: string): Promise<BrowseResult> {
+  const q = path ? `?path=${encodeURIComponent(path)}` : "";
+  const r = await apiFetch(`/api/workspace/browse${q}`);
+  if (!r.ok) throw new Error(await errorText(r, "Browse"));
+  return r.json();
+}
+
+export async function setWorkspace(path: string): Promise<string> {
+  const r = await apiFetch("/api/workspace", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  if (!r.ok) throw new Error(await errorText(r, "Set workspace"));
+  return (await r.json()).root;
+}
+
+export interface PendingEdit {
+  path: string;
+  diff: string;
+  is_new: boolean;
+}
+
+export async function getEdits(): Promise<PendingEdit[]> {
+  const r = await apiFetch("/api/workspace/edits");
+  if (!r.ok) throw new Error(await errorText(r, "Edits"));
+  return r.json();
+}
+
+export async function applyEdits(): Promise<number> {
+  const r = await apiFetch("/api/workspace/edits/apply", { method: "POST" });
+  if (!r.ok) throw new Error(await errorText(r, "Apply edits"));
+  return (await r.json()).count;
+}
+
+export async function discardEdits(): Promise<number> {
+  const r = await apiFetch("/api/workspace/edits/discard", { method: "POST" });
+  if (!r.ok) throw new Error(await errorText(r, "Discard edits"));
+  return (await r.json()).discarded;
+}
+
+export type ChatMode = "chat" | "rag" | "agent" | "plan" | "team" | "code";
 
 // Send one new message to a thread. The backend loads history itself and
 // persists both the question and the streamed answer. `mode` selects plain

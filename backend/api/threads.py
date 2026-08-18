@@ -34,6 +34,7 @@ from models import (
 from prompts import (
     build_agent_system_prompt,
     build_chat_system_prompt,
+    build_code_system_prompt,
     build_rag_system_prompt,
     format_context_block,
 )
@@ -301,6 +302,17 @@ def thread_chat(
                         window,
                         user_profile + build_agent_system_prompt() + attach_note,
                         thread_id,
+                    )
+                elif request.mode == "code":
+                    # Phase 34: coding agent — reads/searches the workspace and
+                    # proposes edits (staged diffs) via the file tools. It gets a
+                    # higher step budget since it explores more before editing.
+                    events = tools.run_tool_loop(
+                        user_id,
+                        window,
+                        build_code_system_prompt(),
+                        thread_id,
+                        max_steps=settings.code_max_steps,
                     )
                 else:  # chat
                     events = tools.stream_with_tools(

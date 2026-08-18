@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # Caps for read-only code tools.
     workspace_max_file_bytes: int = 200_000
     workspace_max_search_results: int = 40
+    # The coding agent explores more (list → search → read → edit), so it gets a
+    # higher tool-step budget than the default ReAct loop.
+    code_max_steps: int = 12
 
     # --- Token inspector settings (Phase 1) ---
     # How many tokens the model can hold in one request. Gemini Flash models

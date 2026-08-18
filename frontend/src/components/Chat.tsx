@@ -14,8 +14,16 @@ import {
   attachFile,
   listAttachments,
   deleteAttachment,
+  getWorkspace,
+  setWorkspace,
+  browseWorkspace,
+  getEdits,
+  applyEdits,
+  discardEdits,
   type ChatMode,
   type Attachment,
+  type PendingEdit,
+  type BrowseResult,
   type Fact,
   type Message,
   type SearchHit,
@@ -59,6 +67,9 @@ export default function Chat() {
   const [fbStats, setFbStats] = useState<FeedbackStats | null>(null); // Phase 23
   const [attachments, setAttachments] = useState<Attachment[]>([]); // Phase 31
   const [attaching, setAttaching] = useState(false);
+  const [workspace, setWorkspaceState] = useState<string | null>(null); // Phase 34
+  const [pendingEdits, setPendingEdits] = useState<PendingEdit[]>([]); // Phase 34
+  const [browse, setBrowse] = useState<BrowseResult | null>(null); // folder picker
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
   const attachInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -82,7 +93,63 @@ export default function Chat() {
   // Phase 23: load the running satisfaction rate on mount.
   useEffect(() => {
     refreshFeedbackStats();
+    getWorkspace().then(setWorkspaceState).catch(() => {}); // Phase 34
   }, []);
+
+  // Phase 34: staged code edits + workspace selection.
+  async function refreshEdits() {
+    try {
+      setPendingEdits(await getEdits());
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  // Phase 34: click-through folder picker (a server-side directory browser, since
+  // the browser can't hand us an absolute path).
+  async function openFolderPicker() {
+    try {
+      setBrowse(await browseWorkspace(workspace ?? undefined));
+    } catch (e) {
+      setDbError(e instanceof Error ? e.message : "Could not browse folders");
+    }
+  }
+
+  async function browseInto(path: string) {
+    try {
+      setBrowse(await browseWorkspace(path));
+    } catch (e) {
+      setDbError(e instanceof Error ? e.message : "Could not open folder");
+    }
+  }
+
+  async function selectFolder() {
+    if (!browse) return;
+    try {
+      setWorkspaceState(await setWorkspace(browse.current));
+      setBrowse(null);
+    } catch (e) {
+      setDbError(e instanceof Error ? e.message : "Could not set workspace");
+    }
+  }
+
+  async function onApplyEdits() {
+    try {
+      await applyEdits();
+      setPendingEdits([]);
+    } catch (e) {
+      setDbError(e instanceof Error ? e.message : "Apply failed");
+    }
+  }
+
+  async function onDiscardEdits() {
+    try {
+      await discardEdits();
+      setPendingEdits([]);
+    } catch {
+      refreshEdits();
+    }
+  }
 
   async function refreshFeedbackStats() {
     try {
@@ -383,6 +450,8 @@ export default function Chat() {
       // Fact extraction runs in the background on the server, so re-fetch the
       // profile shortly after to pick up anything new it learned this turn.
       setTimeout(refreshProfile, 1500);
+      // Phase 34: a code turn may have staged edits — surface them for approval.
+      if (mode === "code") refreshEdits();
     }
   }
 
@@ -612,7 +681,7 @@ export default function Chat() {
           <div className="mx-auto w-full max-w-2xl space-y-2">
             {/* Mode selector: plain chat, RAG grounding, or tool-using agent. */}
             <div className="no-scrollbar flex gap-1 overflow-x-auto rounded-lg bg-neutral-100 p-1 text-xs">
-              {(["chat", "rag", "agent", "plan", "team"] as ChatMode[]).map((m) => (
+              {(["chat", "rag", "agent", "plan", "team", "code"] as ChatMode[]).map((m) => (
                 <button
                   key={m}
                   onClick={() => setMode(m)}
@@ -627,6 +696,28 @@ export default function Chat() {
                 </button>
               ))}
             </div>
+            {/* Phase 34: code mode — workspace picker + staged-edit review. */}
+            {mode === "code" && (
+              <div className="flex items-center justify-between gap-2 rounded-lg bg-neutral-100 px-2 py-1 text-xs">
+                <span className="truncate text-neutral-600">
+                  Workspace:{" "}
+                  <span className="font-mono">{workspace || "not set"}</span>
+                </span>
+                <button
+                  onClick={openFolderPicker}
+                  className="shrink-0 rounded-md bg-white px-2 py-0.5 font-medium text-neutral-700 shadow-sm hover:text-neutral-900"
+                >
+                  {workspace ? "Change" : "Choose folder"}
+                </button>
+              </div>
+            )}
+            {pendingEdits.length > 0 && (
+              <PendingEditsPanel
+                edits={pendingEdits}
+                onApply={onApplyEdits}
+                onDiscard={onDiscardEdits}
+              />
+            )}
             {/* Phase 31: files attached to this chat (RAG scoped to it). */}
             {attachments.length > 0 && (
               <div className="flex flex-wrap gap-1">
@@ -698,6 +789,85 @@ export default function Chat() {
             </div>
           </div>
         </footer>
+      </div>
+
+      {/* Phase 34: click-through folder picker (server-side directory browser). */}
+      {browse && (
+        <FolderPicker
+          browse={browse}
+          onInto={browseInto}
+          onSelect={selectFolder}
+          onClose={() => setBrowse(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// A simple modal that walks the server's directories so the user can pick a
+// workspace folder without typing a path (Phase 34).
+function FolderPicker({
+  browse,
+  onInto,
+  onSelect,
+  onClose,
+}: {
+  browse: BrowseResult;
+  onInto: (path: string) => void;
+  onSelect: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-neutral-200 p-3">
+          <div className="text-sm font-semibold">Choose a workspace folder</div>
+          <div className="mt-1 truncate font-mono text-xs text-neutral-500">
+            {browse.current}
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          {browse.parent && (
+            <button
+              onClick={() => onInto(browse.parent!)}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-neutral-100"
+            >
+              📁 <span className="text-neutral-500">.. (up)</span>
+            </button>
+          )}
+          {browse.dirs.map((d) => (
+            <button
+              key={d}
+              onClick={() => onInto(`${browse.current}/${d}`)}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-neutral-100"
+            >
+              📁 {d}
+            </button>
+          ))}
+          {browse.dirs.length === 0 && !browse.parent && (
+            <p className="p-2 text-xs text-neutral-400">No subfolders here.</p>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-neutral-200 p-3">
+          <button
+            onClick={onClose}
+            className="rounded-lg px-3 py-1.5 text-sm text-neutral-600 hover:text-neutral-900"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onSelect}
+            className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            Use this folder
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -884,6 +1054,74 @@ function Feedback({
         />
       )}
     </div>
+  );
+}
+
+// Phase 34: staged code edits awaiting approval. Shows each file's unified diff
+// (green additions / red deletions) with Apply-all / Discard-all controls.
+function PendingEditsPanel({
+  edits,
+  onApply,
+  onDiscard,
+}: {
+  edits: PendingEdit[];
+  onApply: () => void;
+  onDiscard: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 p-2">
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-xs font-semibold text-amber-800">
+          {edits.length} proposed change{edits.length > 1 ? "s" : ""} — review
+          before applying
+        </span>
+        <div className="flex gap-2">
+          <button
+            onClick={onApply}
+            className="rounded-md bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
+          >
+            Apply
+          </button>
+          <button
+            onClick={onDiscard}
+            className="rounded-md bg-white px-3 py-1 text-xs font-medium text-neutral-600 ring-1 ring-neutral-300 hover:text-red-600"
+          >
+            Discard
+          </button>
+        </div>
+      </div>
+      <div className="max-h-64 space-y-2 overflow-y-auto">
+        {edits.map((e) => (
+          <div key={e.path} className="rounded border border-neutral-200 bg-white">
+            <div className="border-b border-neutral-100 px-2 py-1 font-mono text-xs text-neutral-700">
+              {e.is_new ? "＋ new " : ""}
+              {e.path}
+            </div>
+            <DiffView diff={e.diff} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DiffView({ diff }: { diff: string }) {
+  return (
+    <pre className="overflow-x-auto px-2 py-1 text-xs leading-snug">
+      {diff.split("\n").map((line, i) => {
+        let cls = "text-neutral-600";
+        if (line.startsWith("+") && !line.startsWith("+++"))
+          cls = "bg-green-50 text-green-800";
+        else if (line.startsWith("-") && !line.startsWith("---"))
+          cls = "bg-red-50 text-red-800";
+        else if (line.startsWith("@@")) cls = "text-blue-600";
+        return (
+          <div key={i} className={"font-mono " + cls}>
+            {line || " "}
+          </div>
+        );
+      })}
+    </pre>
   );
 }
 

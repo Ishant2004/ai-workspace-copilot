@@ -550,6 +550,7 @@ def run_tool_loop(
     messages: list[dict],
     system_instruction: str | None = None,
     thread_id: int | None = None,
+    max_steps: int = MAX_STEPS,
 ) -> Iterator[dict]:
     """Drive the model through tool calls over a conversation, yielding events
     as they happen: {type: tool_call|tool_result|answer}.
@@ -572,7 +573,7 @@ def run_tool_loop(
         system_instruction=system_instruction,
     )
 
-    for _ in range(MAX_STEPS):
+    for _ in range(max_steps):
         response = gemini.generate(contents, config)
         candidate = response.candidates[0]
         parts = candidate.content.parts or []

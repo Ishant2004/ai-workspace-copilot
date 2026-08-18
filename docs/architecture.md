@@ -785,6 +785,22 @@ both propose and apply time. This is the safety philosophy stated at the top of
 is confined, diffed, and logged. Verified: proposals write nothing until applied,
 out-of-workspace writes are rejected and never staged, and apply logs each edit.
 
+## Phase 34: coding agent (`code` mode)
+
+The read tools (32) and edit tools (33) come together as a Cursor-style loop. A
+new `code` chat mode runs the ReAct loop over the workspace tools with a
+coding-focused prompt — explore, read before editing, propose edits as staged
+diffs — and a higher step budget since it explores more than a normal turn. The
+frontend adds a **click-through folder picker** (a modal that browses the server's
+directories via `GET /workspace/browse` — the browser can't provide an absolute
+path, so the backend lists folders and the user clicks to select one) and a
+**pending-edits panel** that renders each proposed unified diff (green/red) with
+Apply / Discard, so the human stays in the loop: the agent proposes, you approve. Verified: asked
+to change a function's return value, the agent listed the dir, read the file,
+proposed an `edit_file` diff (nothing written), summarised it without claiming it
+was live, and apply wrote it. Guarded command execution (running tests) is left
+out on purpose — that's an explicit allowlist decision, not a default.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

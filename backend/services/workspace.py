@@ -84,6 +84,47 @@ def resolve(user_id: int, rel_path: str) -> str:
     return target
 
 
+def browse_start() -> str:
+    """Where the folder browser opens: the allowed base, else the home dir."""
+    base = settings.workspace_allowed_base or "~"
+    return os.path.realpath(os.path.expanduser(base))
+
+
+def browse(path: str | None = None) -> dict:
+    """List subdirectories of `path` so the UI can offer a click-through folder
+    picker (Phase 34). Confined to WORKSPACE_ALLOWED_BASE when that is set.
+
+    Returns {current, parent, dirs}: the resolved directory, the directory to go
+    up to (or None at the top), and immediate subfolder names.
+    """
+    start = browse_start()
+    current = os.path.realpath(os.path.expanduser(path)) if path else start
+    # Fence: never browse above the allowed base when one is configured.
+    if settings.workspace_allowed_base:
+        if current != start and not current.startswith(start + os.sep):
+            current = start
+    if not os.path.isdir(current):
+        current = start
+
+    # Can we go up? Not above the base, and not above the filesystem root.
+    top = start if settings.workspace_allowed_base else os.path.dirname(current)
+    at_top = current == top and settings.workspace_allowed_base
+    parent = None if at_top or current == os.path.dirname(current) else os.path.dirname(current)
+
+    try:
+        names = sorted(os.listdir(current))
+    except (PermissionError, OSError):
+        names = []
+    dirs = [
+        n
+        for n in names
+        if not n.startswith(".")
+        and n not in IGNORE_DIRS
+        and os.path.isdir(os.path.join(current, n))
+    ]
+    return {"current": current, "parent": parent, "dirs": dirs}
+
+
 # Directories never worth walking/reading for a code workspace.
 IGNORE_DIRS = {
     ".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build",
