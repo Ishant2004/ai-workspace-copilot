@@ -212,4 +212,4 @@ own conventions.
 - ✅ Code-editing tools with diffs + approval
 - ✅ Coding agent (`code` mode)
 - ✅ Skills framework (`use_skill`, registry)
-- ⬜ Project skill library
+- ✅ Project skill library

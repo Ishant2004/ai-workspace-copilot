@@ -815,6 +815,18 @@ front, the full steps on demand. Verified: asked how to add a tool, the agent
 called `use_skill("add-a-tool")` and followed the loaded steps. Phase 36 authors
 the project's skill library on top of this.
 
+## Phase 36: skill library
+
+The framework (35) with content: five playbooks in `backend/skills/` that encode
+how *this* repo is built — `add-a-feature`, `add-a-tool`, `add-an-mcp-server-tool`,
+`add-an-eval-case`, `add-a-phase`. Each names the real files and conventions
+involved, so the agent (or a new contributor) starts a task with the map already
+drawn. It's a small act of making the copilot self-aware of its own process:
+adding a skill is just dropping a Markdown file, no code. Verified: the agent
+picks the right skill for a task ("add an eval case" → `add-an-eval-case`). This
+closes Part 3 — the copilot can now ground on per-chat files, read and edit code
+under confinement with human approval, and follow reusable playbooks.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

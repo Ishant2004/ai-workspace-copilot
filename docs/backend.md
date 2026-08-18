@@ -523,8 +523,19 @@ exists. The `use_skill(name)` tool loads a skill's body into the agent's working
 context, so it starts a recurring task already informed instead of rebuilding
 understanding each time. `GET /skills` / `GET /skills/{name}` expose them; the
 tool is also available over MCP. Verified: the agent, asked how to add a tool,
-called `use_skill("add-a-tool")` and answered with the playbook's steps. The
-initial library is authored in Phase 36.
+called `use_skill("add-a-tool")` and answered with the playbook's steps.
+
+### Skill library (Phase 36)
+
+The initial project playbooks in `backend/skills/`, encoding this repo's own
+conventions: `add-a-feature` (plan → build one feature → test → docs → user
+pushes), `add-a-tool`, `add-an-mcp-server-tool`, `add-an-eval-case` (extend the
+golden set + run the gate), and `add-a-phase` (how a phase is structured and
+documented). Each points at the real files that matter (`services/tools.py`,
+`mcp_server.py`, `eval/golden.json`, the plan/docs). Verified: all five parse with
+complete frontmatter + Steps + Context, and the agent — asked to add an eval case
+— selected `add-an-eval-case` from the catalogue. New skills need no code: drop a
+Markdown file in `backend/skills/` and it's discovered automatically.
 
 ### Security hardening (Phase 29)
 

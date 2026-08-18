@@ -64,7 +64,11 @@ polished UX, and security hardening.
 | 33 | Code-editing tools (diffs + confinement) | ✅ Done |
 | 34 | Coding agent (`code` mode) | ✅ Done |
 | 35 | Skills framework (`use_skill`) | ✅ Done |
-| 36 | Skill library | ⬜ Planned |
+| 36 | Skill library | ✅ Done |
+
+🎉 Part 3 complete — per-chat document attachments, a sandboxed code-editing agent
+(read/search/edit with confined, diffed, approval-gated writes and a folder
+picker), and a skills framework + library of project playbooks.
 
 **Run the eval** (from `backend/`):
 
