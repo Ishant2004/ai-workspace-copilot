@@ -48,7 +48,10 @@ FastAPI application that receives chat requests and streams LLM replies.
 | `services/guard.py` | Heuristic prompt-injection detector for retrieved content (Phase 29). |
 | `services/workspace.py` | Per-user code workspace root + path confinement (Phase 32). |
 | `services/editor.py` | Code edits: propose (diff, staged) → apply/discard (Phase 33). |
+| `services/skills.py` | Skill playbooks: discover, load (`use_skill`), catalogue (Phase 35). |
 | `api/workspace.py` | Select the workspace; review/apply/discard staged edits. |
+| `api/skills.py` | `GET /skills`, `GET /skills/{name}`. |
+| `skills/*.md` | Reusable task playbooks (frontmatter + steps + context pointers). |
 | `services/feedback.py` | 👍/👎 feedback store: rate answers, satisfaction stats, export negatives (Phase 23). |
 | `api/feedback.py` | `POST /feedback`, `GET /feedback/stats`, `GET /feedback/export`. |
 | `eval/export_feedback.py` | CLI: turn thumbs-down feedback into golden-set candidates. |
@@ -223,6 +226,8 @@ system prompt on every turn (chat/RAG/agent). A hard `gemini_request_timeout`
 - `GET /workspace/edits` → staged code edits (diffs) awaiting approval;
   `POST /workspace/edits/apply` writes them all (confined + audited);
   `POST /workspace/edits/discard` throws them away. Phase 33.
+- `GET /skills` → available skill playbooks (name, description, when_to_use);
+  `GET /skills/{name}` → the full skill (with steps + context body). Phase 35.
 - `POST /threads/{id}/attach` — attach a file (multipart `file`) to *one chat*;
   its content is RAG-usable in that chat only (Phase 30). Rate-limited + size-capped.
   `GET /threads/{id}/attachments` lists them; `DELETE /threads/{id}/attachments/{filename}`
@@ -506,6 +511,20 @@ Note: if the user has an external filesystem MCP server configured, the agent ma
 also use its tools; those are governed by *that server's* own sandbox, not our
 workspace confinement — our native code tools remain confined via
 `workspace.resolve`.
+
+### Skills framework (Phase 35)
+
+A skill is a Markdown playbook in `backend/skills/` — frontmatter (`name`,
+`description`, `when_to_use`) plus a body of ordered **steps** and **context**
+pointers (which files to read, which conventions to follow). `services/skills.py`
+discovers them (frontmatter parsed by hand, no YAML dep), and `catalog()` injects
+a one-line-per-skill list into the agent/code prompts so the model knows what
+exists. The `use_skill(name)` tool loads a skill's body into the agent's working
+context, so it starts a recurring task already informed instead of rebuilding
+understanding each time. `GET /skills` / `GET /skills/{name}` expose them; the
+tool is also available over MCP. Verified: the agent, asked how to add a tool,
+called `use_skill("add-a-tool")` and answered with the playbook's steps. The
+initial library is authored in Phase 36.
 
 ### Security hardening (Phase 29)
 

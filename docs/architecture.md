@@ -801,6 +801,20 @@ proposed an `edit_file` diff (nothing written), summarised it without claiming i
 was live, and apply wrote it. Guarded command execution (running tests) is left
 out on purpose — that's an explicit allowlist decision, not a default.
 
+## Phase 35: skills framework
+
+Skills package *how* to do a recurring task so the agent doesn't rebuild context
+from scratch each time. Each skill is a Markdown file (`backend/skills/`) with
+frontmatter (name, description, when_to_use) plus a body of ordered steps and
+pointers to the files/conventions that matter. `services/skills.py` discovers
+them and exposes `use_skill(name)` — a tool that loads the playbook into the
+agent's working context — while `catalog()` injects a short "here are the skills
+you can load" list into the agent and code prompts so the model knows what to
+reach for. This is progressive disclosure for an agent: a one-line catalogue up
+front, the full steps on demand. Verified: asked how to add a tool, the agent
+called `use_skill("add-a-tool")` and followed the loaded steps. Phase 36 authors
+the project's skill library on top of this.
+
 ## Why streaming (SSE)?
 
 A full LLM answer can take several seconds. Streaming shows the first words

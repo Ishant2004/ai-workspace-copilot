@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from google.genai import types
 
 from config import settings
-from services import editor, extract, gemini, mcp_client, workspace
+from services import editor, extract, gemini, mcp_client, skills, workspace
 from services.search import run_search
 from services.web import web_search
 
@@ -384,6 +384,24 @@ _DECLARATIONS = [
         ),
     ),
     types.FunctionDeclaration(
+        name="use_skill",
+        description=(
+            "Load a reusable playbook (steps + relevant files) for a recurring "
+            "task before starting it. Call with the skill name from the available "
+            "skills list."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "name": types.Schema(
+                    type=types.Type.STRING,
+                    description="The skill name to load.",
+                )
+            },
+            required=["name"],
+        ),
+    ),
+    types.FunctionDeclaration(
         name="write_file",
         description=(
             "Propose creating or overwriting a workspace file with new content. "
@@ -441,6 +459,7 @@ _FUNCTIONS = {
     "web_search": web_search,
     "fetch_url": fetch_url,
     "analyze_csv": analyze_csv,
+    "use_skill": skills.use_skill,
 }
 
 # Tools that operate on the caller's workspace (need user_id) — Phase 32/33.

@@ -94,5 +94,11 @@ def search_code(query: str) -> str:
     return tools.search_code(_MCP_USER_ID, query)
 
 
+@mcp.tool()
+def use_skill(name: str) -> str:
+    """Load a reusable playbook (steps + relevant files) for a recurring task."""
+    return tools.skills.use_skill(name)
+
+
 if __name__ == "__main__":
     mcp.run()  # stdio transport

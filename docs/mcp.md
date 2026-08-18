@@ -16,6 +16,7 @@ external apps can search your knowledge base, do math, and get the time.
 | `fetch_url(url)` | Fetch a web page and return its readable text. |
 | `analyze_csv(csv_text)` | Summarise CSV: columns, row count, numeric aggregates, sample rows. |
 | `list_dir(path)` / `read_file(path)` / `search_code(query)` | Read-only code workspace tools, confined to `MCP_USER_ID`'s selected root (Phase 32). |
+| `use_skill(name)` | Load a reusable task playbook (steps + context) by name (Phase 35). |
 | `calculate(expression)` | Safe arithmetic. |
 | `get_current_time()` | Current UTC time. |
 

@@ -16,6 +16,7 @@ from api.embed import router as embed_router
 from api.feedback import router as feedback_router
 from api.ingest import router as ingest_router
 from api.profile import router as profile_router
+from api.skills import router as skills_router
 from api.workspace import router as workspace_router
 from api.rag import router as rag_router
 from api.threads import router as threads_router
@@ -88,6 +89,7 @@ app.include_router(tools_router)
 app.include_router(profile_router)
 app.include_router(feedback_router)
 app.include_router(workspace_router)
+app.include_router(skills_router)
 
 
 @app.get("/health")

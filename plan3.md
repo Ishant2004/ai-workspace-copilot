@@ -211,5 +211,5 @@ own conventions.
 - ✅ Workspace confinement + read-only code tools
 - ✅ Code-editing tools with diffs + approval
 - ✅ Coding agent (`code` mode)
-- ⬜ Skills framework (`use_skill`, registry)
+- ✅ Skills framework (`use_skill`, registry)
 - ⬜ Project skill library
